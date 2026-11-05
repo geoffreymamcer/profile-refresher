@@ -27,11 +27,14 @@
         </Rectangle.Fill>
     </Rectangle>
 
-    <Grid x:Name="MainGrid" Margin="16" SizeChanged="MainGrid_SizeChanged">
+    <!-- The whole window scrolls when its content is taller than the window,
+         so the buttons and the log can always be reached. -->
+    <ScrollViewer x:Name="PageScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+    <Grid x:Name="MainGrid" Margin="16">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" MinHeight="110" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
@@ -70,7 +73,7 @@
                     <ComboBoxItem Content="By profile name" />
                 </ComboBox>
             </DockPanel>
-            <ListBox x:Name="ProfileList" BorderThickness="0" Margin="2"
+            <ListBox x:Name="ProfileList" BorderThickness="0" Margin="2" MinHeight="90" MaxHeight="220"
                      ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                 <ListBox.ItemTemplate>
                     <DataTemplate>
@@ -89,10 +92,6 @@
 
         <!-- Options -->
         <GroupBox x:Name="OptionsBox" Grid.Row="3" Header="Options" Margin="0,0,0,12">
-            <!-- Scrolls when the options are taller than the window allows (MaxHeight is set in code),
-                 so the buttons and log below always stay visible. -->
-            <ScrollViewer x:Name="OptionsScroll" VerticalScrollBarVisibility="Auto"
-                          HorizontalScrollBarVisibility="Disabled">
             <StackPanel Margin="6">
 
                 <!-- Combined task -->
@@ -290,7 +289,6 @@
                     </StackPanel>
                 </Grid>
             </StackPanel>
-            </ScrollViewer>
         </GroupBox>
 
         <!-- Controls -->
@@ -316,5 +314,6 @@
                        HorizontalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center" />
         </Border>
     </Grid>
+    </ScrollViewer>
     </Grid>
 </Window>

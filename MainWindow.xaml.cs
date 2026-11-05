@@ -25,6 +25,12 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
 
+        // Never open taller than the screen (laptops with display scaling have little height);
+        // the content scrolls inside the window instead.
+        double maxH = SystemParameters.WorkArea.Height - 10;
+        if (Height > maxH) Height = maxH;
+        if (MinHeight > Height) MinHeight = Height;
+
         CreditText.Text = "© " + Credits.Text;
         if (!Credits.IsIntact(CreditText.Text[2..]) || !Title.Contains("Jeymeyzer"))
         {
@@ -171,28 +177,6 @@ public partial class MainWindow : Window
         return $"{text}   ({loops - hosting} refresh, {hosting} I'm hosting)";
     }
 
-    // ---------- Layout ----------
-
-    private void MainGrid_SizeChanged(object sender, SizeChangedEventArgs e) => FitOptions();
-
-    /// <summary>
-    /// Caps the Options box so it never pushes the buttons and log off the window:
-    /// whatever doesn't fit scrolls inside the box instead.
-    /// </summary>
-    private void FitOptions()
-    {
-        const int profilesRow = 2, optionsRow = 3;
-        const double profilesMin = 110 + 10;   // profiles list MinHeight + its bottom margin
-        const double optionsChrome = 12 + 30;  // Options box bottom margin + header and border
-
-        double others = 0;
-        for (int i = 0; i < MainGrid.RowDefinitions.Count; i++)
-            if (i != profilesRow && i != optionsRow) others += MainGrid.RowDefinitions[i].ActualHeight;
-
-        double room = MainGrid.ActualHeight - others - profilesMin - optionsChrome;
-        OptionsScroll.MaxHeight = Math.Max(120, room);
-    }
-
     // ---------- Message list (Chat & reply) ----------
 
     private void RenumberReplies()
@@ -204,6 +188,7 @@ public partial class MainWindow : Window
     {
         _replies.Add(new ReplyMessageItem());
         RenumberReplies();
+        (sender as FrameworkElement)?.BringIntoView(); // keep the Add button (and the new box above it) in view
     }
 
     private void RemoveMessage_Click(object sender, RoutedEventArgs e)
