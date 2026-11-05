@@ -119,14 +119,28 @@ For each unread chat it:
 
 **The schedule:**
 
-1. A **chat pass** goes through every profile. Profiles without the orange dot are skipped quickly.
+1. **Scan.** Each profile's site tab reports live whether the orange dot is on the Messages icon
+   (`extension/dotwatch.js`). A **chat pass** opens only the profiles that have the dot, waiting
+   **Delay after each chat check** (default 0.5 s) after each. Profiles with no dot are not touched.
 2. Chat passes repeat while a pass still read at least one chat (a reply may bring a new message).
-3. When a pass reads no new chats, one **refresh pass** runs, then it goes back to step 1.
+3. When no profile has new chats, one **refresh pass** runs over all profiles, waiting
+   **Delay after each refresh** (default 5 s) after each, then it goes back to step 1.
 4. Every **I'm hosting every** minutes (default 20; the first one 20 minutes after Start) an I'm hosting
    pass runs. If it falls due in the middle of a pass, the current pass finishes first.
 
 Chats that are `needs_review` (10/10) stay unread and skipped, so a dot that only has those doesn't
 keep the chat passes going.
+
+**Profiles without a live report** are checked one by one, the old way, and the log names them. A
+profile starts reporting once (a) the updated extension is loaded and the site tab was reloaded after
+that, and (b) the app has run one job in it (it learns which profile the extension belongs to; this
+is remembered in `%AppData%\ProfileRefresher\extension-clients.json`). A report older than 75 s is
+not trusted, so a closed or frozen tab falls back to the direct check.
+
+**Notification when someone replies after your last message.** When a chat already got the whole
+sequence and they write again, a small window opens in the bottom-right corner (with a sound) showing
+the **Chrome profile**, who replied and their message. **Open profile** brings that profile's window
+to the front; entries stay until you dismiss them. The log shows the same with `!! NEW REPLY`.
 
 **Dry run** (on by default): types each message, waits, then clears it without pressing Send. Use it
 with **Test 1 profile** (one chat pass on the first ticked profile) to watch it work, then untick it.

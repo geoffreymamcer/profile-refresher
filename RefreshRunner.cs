@@ -28,8 +28,23 @@ public sealed class ContinuousSettings
     public required LoopStep RefreshStep { get; init; }
     public required LoopStep HostingStep { get; init; }
     public required TimeSpan HostingEvery { get; init; }
+
+    /// <summary>Wait after each profile in I'm hosting passes (plus up to <see cref="Jitter"/>).</summary>
     public required TimeSpan Delay { get; init; }
     public TimeSpan Jitter { get; init; } = TimeSpan.Zero;
+
+    /// <summary>Wait after each profile opened in a chat pass.</summary>
+    public TimeSpan ChatDelay { get; init; } = TimeSpan.FromSeconds(0.5);
+    /// <summary>Wait after each profile in a refresh pass.</summary>
+    public TimeSpan RefreshDelay { get; init; } = TimeSpan.FromSeconds(5);
+
+    /// <summary>
+    /// Live "new messages" state per profile, from the extension's reports. When set, chat passes
+    /// only open profiles that have new messages (or haven't reported); the rest are skipped.
+    /// </summary>
+    public Func<BrowserProfile, DotState>? DotState { get; init; }
+    /// <summary>Wait once at the start so the live reports can arrive.</summary>
+    public TimeSpan StartupWait { get; init; } = TimeSpan.Zero;
 }
 
 /// <summary>Pause gate: awaiting it completes immediately unless paused.</summary>
@@ -61,6 +76,8 @@ public sealed class RefreshRunner
     public PauseController Pause { get; } = new();
     public event Action<string>? Log;
     public event Action<string>? Status;
+    /// <summary>Someone replied after the whole message sequence was sent.</summary>
+    public event Action<BrowserProfile, ReplyAlert>? Alert;
 
     public int Succeeded { get; private set; }
     public int Failed { get; private set; }
@@ -101,21 +118,70 @@ public sealed class RefreshRunner
         var nextHosting = DateTimeOffset.Now + s.HostingEvery;
         Log?.Invoke($"First I'm hosting pass at about {nextHosting:HH:mm}, then every {s.HostingEvery.TotalMinutes:0.##} min.");
 
+        if (s.StartupWait > TimeSpan.Zero)
+            await DelayAsync(s.StartupWait, "Waiting for the profiles to report new messages", ct);
+
         for (int cycle = 1; ; cycle++)
         {
             // Keep doing chat passes while they still find new chats (replies can bring new messages).
             for (int round = 1; ; round++)
             {
-                bool found = await RunPassAsync(s, s.ChatStep, $"Cycle {cycle} · chats {round}", ct, quickWhenIdle: true);
+                var targets = ChatTargets(s);
+                bool found = targets.Count > 0 &&
+                             await RunPassAsync(targets, s.ChatStep, $"Cycle {cycle} · chats {round}", s.ChatDelay,
+                                 TimeSpan.Zero, ct);
                 nextHosting = await HostingIfDueAsync(s, nextHosting, ct);
                 if (!found) break;
-                Log?.Invoke("New chats were read in this pass; checking all profiles again.");
+                Log?.Invoke("New chats were read in this pass; checking again.");
             }
 
             Log?.Invoke("No new chats on any profile: refresh pass.");
-            await RunPassAsync(s, s.RefreshStep, $"Cycle {cycle} · refresh", ct);
+            await RunPassAsync(s.Profiles, s.RefreshStep, $"Cycle {cycle} · refresh", s.RefreshDelay, TimeSpan.Zero, ct);
             nextHosting = await HostingIfDueAsync(s, nextHosting, ct);
         }
+    }
+
+    /// <summary>A report older than this is not trusted (the tab may be closed, frozen or loading).</summary>
+    private static readonly TimeSpan ReportMaxAge = TimeSpan.FromSeconds(75);
+
+    private string _lastUnreported = "";
+
+    /// <summary>Profiles a chat pass should open: those with new messages, and those without a live report.</summary>
+    private List<BrowserProfile> ChatTargets(ContinuousSettings s)
+    {
+        if (s.DotState is null) return s.Profiles.ToList();
+
+        var targets = new List<BrowserProfile>();
+        var withDot = new List<string>();
+        var unreported = new List<string>();
+        foreach (var p in s.Profiles)
+        {
+            switch (s.DotState(p))
+            {
+                case DotState.HasDot:
+                    targets.Add(p);
+                    withDot.Add(p.DisplayName);
+                    break;
+                case DotState.Unknown:
+                    targets.Add(p);
+                    unreported.Add(p.DisplayName);
+                    break;
+            }
+        }
+
+        if (withDot.Count > 0) Log?.Invoke($"Scan: new messages on {string.Join(", ", withDot)}.");
+
+        string un = string.Join(", ", unreported);
+        if (un != _lastUnreported)
+        {
+            _lastUnreported = un;
+            if (unreported.Count > 0)
+                Log?.Invoke($"No live report from {un}: checking these one by one. (Reload the extension and the " +
+                            "site tab there; a profile starts reporting after its first chat check.)");
+            else
+                Log?.Invoke("All profiles report new messages live.");
+        }
+        return targets;
     }
 
     /// <summary>Runs the I'm hosting pass if it's due. Returns when the next one is due.</summary>
@@ -125,39 +191,27 @@ public sealed class RefreshRunner
 
         var started = DateTimeOffset.Now;
         Log?.Invoke($"I'm hosting is due (was due {due:HH:mm}).");
-        await RunPassAsync(s, s.HostingStep, "I'm hosting", ct);
+        await RunPassAsync(s.Profiles, s.HostingStep, "I'm hosting", s.Delay, s.Jitter, ct);
         var next = started + s.HostingEvery;
         Log?.Invoke($"Next I'm hosting pass at about {next:HH:mm}.");
         return next;
     }
 
-    /// <summary>Wait after a chat check that found nothing to do (instead of the full delay).</summary>
-    private static readonly TimeSpan IdleDelay = TimeSpan.FromSeconds(1);
-
-    /// <summary>One pass through every profile. Returns true if any profile reported work done.</summary>
-    /// <param name="quickWhenIdle">Use a short wait after a profile that had nothing to do (e.g. no new messages).</param>
-    private async Task<bool> RunPassAsync(ContinuousSettings s, LoopStep step, string label, CancellationToken ct,
-        bool quickWhenIdle = false)
+    /// <summary>One pass through the given profiles. Returns true if any profile reported work done.</summary>
+    private async Task<bool> RunPassAsync(IReadOnlyList<BrowserProfile> profiles, LoopStep step, string label,
+        TimeSpan delay, TimeSpan jitter, CancellationToken ct)
     {
         bool any = false;
-        int count = s.Profiles.Count;
+        int count = profiles.Count;
         for (int i = 0; i < count; i++)
         {
             string position = $"{label} · Profile {i + 1}/{count}";
-            var outcome = await RunOneAsync(s.Profiles[i], step, position, label, ct);
+            var outcome = await RunOneAsync(profiles[i], step, position, label, ct);
             any |= outcome.DidWork;
 
-            TimeSpan wait;
-            if (quickWhenIdle && !outcome.DidWork)
-            {
-                wait = s.Delay < IdleDelay ? s.Delay : IdleDelay;
-            }
-            else
-            {
-                wait = s.Delay;
-                if (s.Jitter > TimeSpan.Zero)
-                    wait += TimeSpan.FromMilliseconds(Random.Shared.NextDouble() * s.Jitter.TotalMilliseconds);
-            }
+            var wait = delay;
+            if (jitter > TimeSpan.Zero)
+                wait += TimeSpan.FromMilliseconds(Random.Shared.NextDouble() * jitter.TotalMilliseconds);
             await DelayAsync(wait, position, ct);
         }
         return any;
@@ -193,6 +247,8 @@ public sealed class RefreshRunner
 
         if (outcome.Ok) Succeeded++; else Failed++;
         Log?.Invoke($"[{logTag}] {profile.DisplayName}: {outcome.Message}");
+        if (outcome.Alerts is { } alerts)
+            foreach (var a in alerts) Alert?.Invoke(profile, a);
         return outcome;
     }
 

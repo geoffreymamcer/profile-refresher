@@ -8,6 +8,42 @@ import { checkDot, readChats } from "./chats.js";
 const APP = "http://localhost:47821";
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// A random id for this Chrome profile's copy of the extension. The app learns which profile it
+// belongs to when it runs a job here, so it can tell whose live dot reports are whose.
+let clientIdPromise = null;
+function clientId() {
+  clientIdPromise ??= (async () => {
+    const { clientId: saved } = await chrome.storage.local.get("clientId");
+    if (saved) return saved;
+    const id = crypto.randomUUID();
+    await chrome.storage.local.set({ clientId: id });
+    return id;
+  })();
+  return clientIdPromise;
+}
+
+// Live dot reports from dotwatch.js → the app (ignored when the app isn't running).
+chrome.runtime.onMessage.addListener((msg, sender) => {
+  if (msg?.type === "dot" && sender.tab) reportDot(sender.tab, msg);
+});
+
+async function reportDot(tab, msg) {
+  try {
+    await fetch(`${APP}/status`, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain" },
+      body: JSON.stringify({
+        client: await clientId(),
+        tabId: tab.id,
+        hasButton: !!msg.hasButton,
+        hasDot: !!msg.hasDot,
+      }),
+    });
+  } catch {
+    // app not running
+  }
+}
+
 chrome.commands.onCommand.addListener((command) => {
   if (command === "run-job") handleJob();
 });
@@ -15,7 +51,7 @@ chrome.commands.onCommand.addListener((command) => {
 async function handleJob() {
   let job;
   try {
-    const r = await fetch(`${APP}/job`, { cache: "no-store" });
+    const r = await fetch(`${APP}/job?client=${encodeURIComponent(await clientId())}`, { cache: "no-store" });
     if (r.status !== 200) return; // app not running a job: ignore the key press
     job = await r.json();
   } catch {

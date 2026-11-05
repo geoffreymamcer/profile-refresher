@@ -10,7 +10,13 @@ public sealed record RefreshOutcome(bool Ok, string Message)
 {
     /// <summary>Chat passes: true when at least one chat was opened (so another chat pass may be needed).</summary>
     public bool DidWork { get; init; }
+
+    /// <summary>Chats where someone replied after the whole message sequence was sent.</summary>
+    public IReadOnlyList<ReplyAlert>? Alerts { get; init; }
 }
+
+/// <summary>Someone replied after our last message of the sequence.</summary>
+public sealed record ReplyAlert(string UserId, string? UserName, string? Message, DateTimeOffset At);
 
 /// <summary>
 /// Refreshes one tab in a browser window through UI Automation by invoking the toolbar's

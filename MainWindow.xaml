@@ -151,6 +151,8 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
                     <TextBlock Grid.Row="0" Text="Messages to send (in order)" Margin="0,6" VerticalAlignment="Top"
@@ -189,7 +191,21 @@
                                    VerticalAlignment="Center" />
                     </StackPanel>
 
-                    <CheckBox x:Name="DryRunCheck" Grid.Row="4" Grid.Column="1" Margin="0,4,0,2"
+                    <TextBlock Grid.Row="4" Text="Delay after each chat check" Margin="0,6" VerticalAlignment="Center" />
+                    <StackPanel Grid.Row="4" Grid.Column="1" Orientation="Horizontal" Margin="0,3">
+                        <TextBox x:Name="ChatDelayBox" Width="80" VerticalContentAlignment="Center" />
+                        <TextBlock Text="seconds (only profiles with new messages are opened)" Opacity="0.65"
+                                   Margin="8,0,0,0" VerticalAlignment="Center" TextWrapping="Wrap" />
+                    </StackPanel>
+
+                    <TextBlock Grid.Row="5" Text="Delay after each refresh" Margin="0,6" VerticalAlignment="Center" />
+                    <StackPanel Grid.Row="5" Grid.Column="1" Orientation="Horizontal" Margin="0,3">
+                        <TextBox x:Name="RefreshDelayBox" Width="80" VerticalContentAlignment="Center" />
+                        <TextBlock Text="seconds (I'm hosting passes use the delay below)" Opacity="0.65"
+                                   Margin="8,0,0,0" VerticalAlignment="Center" TextWrapping="Wrap" />
+                    </StackPanel>
+
+                    <CheckBox x:Name="DryRunCheck" Grid.Row="6" Grid.Column="1" Margin="0,4,0,2"
                               Content="Dry run: type each message but don't press Send" />
                 </Grid>
 

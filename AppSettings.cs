@@ -35,6 +35,8 @@ public sealed class AppSettings
     public bool ReplyDryRun { get; set; } = true;
     public double HostingEveryMinutes { get; set; } = 20;
     public double SendDelaySeconds { get; set; } = 2;
+    public double ChatDelaySeconds { get; set; } = 0.5;
+    public double RefreshDelaySeconds { get; set; } = 5;
 
     private static string FilePath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ProfileRefresher", "settings.json");
