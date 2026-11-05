@@ -69,7 +69,15 @@ export async function runSteps(job) {
     return candidates.length === 1 ? candidates[0] : null;
   };
 
-  const wheelItems = () => all("mbsc-wheel-item");
+  // Mobiscroll renders options as <mbsc-wheel-item> (Angular) or div.mbsc-scroller-wheel-item (React/JS).
+  const wheelItems = () => all("mbsc-wheel-item, .mbsc-scroller-wheel-item");
+
+  // Short description of an element, for error messages.
+  const describe = (el) => {
+    if (!el) return "nothing";
+    const cls = typeof el.className === "string" ? el.className.trim().split(/\s+/).slice(0, 3).join(".") : "";
+    return `<${el.tagName.toLowerCase()}${cls ? "." + cls : ""}> "${norm(el.textContent).slice(0, 40)}"`;
+  };
   const selectedItem = () => wheelItems().find((i) => i.getAttribute("aria-selected") === "true") || null;
 
   const isText = (el, wanted) => !!el && norm(el.textContent) === wanted;
@@ -114,11 +122,41 @@ export async function runSteps(job) {
     return false;
   };
 
+  // Returns null when the picker is open, otherwise a reason.
+  let pickerWhy = "";
   const openPicker = async () => {
-    const cell = await waitFor(findStatusCell, 4000);
-    if (!cell) return false;
-    click(cell);
-    if (!(await waitFor(() => wheelItems().length > 0))) return false;
+    const opened = () => wheelItems().length > 0;
+    let cell = null;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      cell = await waitFor(findStatusCell, 4000);
+      if (!cell) { pickerWhy = "status field disappeared"; return false; }
+      // Let the edit screen finish sliding in; a click during the animation is ignored.
+      await sleep(attempt === 1 ? 500 : 1000);
+      if (opened()) break;
+
+      // 1) the cell itself, 2) its innermost part (the handler may sit on a child), 3) keyboard.
+      const inner = cell.querySelector(".fa-angle-down, input, [tabindex]") || cell.firstElementChild;
+      const tries = [
+        () => click(cell),
+        () => inner && click(inner),
+        () => {
+          cell.focus?.();
+          for (const type of ["keydown", "keyup"]) {
+            cell.dispatchEvent(new KeyboardEvent(type, { key: "Enter", code: "Enter", keyCode: 13, which: 13, bubbles: true }));
+          }
+        },
+      ];
+      tries[attempt - 1]();
+      if (await waitFor(opened, Math.min(T, 3000))) break;
+    }
+
+    if (!opened()) {
+      const popup = all('[class*="mbsc-popup"], [class*="mbsc-scroller"], [role="dialog"]')[0];
+      pickerWhy = popup
+        ? `a popup opened (${describe(popup)}) but no wheel items matched; the option markup has changed`
+        : `clicked ${describe(cell)} but no picker appeared; wrong element, or the click was ignored`;
+      return false;
+    }
     await sleep(300);
     return true;
   };
@@ -136,7 +174,7 @@ export async function runSteps(job) {
   // Open the picker, choose `wanted`, press Done and check the field shows it. Returns an error or null.
   const setStatus = async (wanted, label) => {
     step = `Open status picker (${label})`;
-    if (!(await openPicker())) return "status picker did not open";
+    if (!(await openPicker())) return "status picker did not open: " + pickerWhy;
     step = `Choose "${label}"`;
     if (!(await chooseInWheel(wanted))) return `could not select "${label}" in the picker`;
     step = `Done (${label})`;
@@ -191,7 +229,7 @@ export async function runSteps(job) {
       // 2) Still no Save? Switch to a neighbouring option, then back.
       if (!(await saveButton(2500))) {
         step = "Open status picker (switch away)";
-        if (!(await openPicker())) return fail("status picker did not open");
+        if (!(await openPicker())) return fail("status picker did not open: " + pickerWhy);
         const items = wheelItems();
         const sel = selectedItem();
         const idx = sel ? items.indexOf(sel) : -1;
