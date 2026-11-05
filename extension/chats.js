@@ -1,4 +1,4 @@
-// Chat-reading steps (Stage 1: read only, nothing is sent).
+// Chat steps: read unread chats and, when the app sends a message list, reply with the next one.
 // Developed by Jeymeyzer. XYZ Chatter (Team Mel)
 //
 // Each function is injected into the page on its own, so everything it needs is defined inside it.
@@ -11,7 +11,8 @@
 //   app-chat-list-ad / [data-testid="sniffiesChatRow"] / [aria-label="View Advertisement"] / .conversation-marker.ad   the ad (never clicked)
 //   [id^="message-"] inside #chat-profile-messages-container   one message (text or photo)
 //   .sent_message / .received_message             who sent it
-//   [data-testid="chatTextArea"]                  present while a chat is open
+//   [data-testid="chatTextArea"]                  message box (present while a chat is open)
+//   [data-testid="sendButton"]                    send (paper plane)
 //   [data-testid="headerGoBackButton"]            Back
 
 /** Quick check: is there a new-message dot? (No clicks.) */
@@ -24,7 +25,11 @@ export function checkDot() {
   };
 }
 
-/** Opens the chat list, reads every unread real conversation, then closes the list. */
+/**
+ * Opens the chat list, reads every unread real conversation, then closes the list.
+ * If job.replyMessages is set, replies in each chat with the next message of the sequence:
+ * message N+1 when we have already sent N text messages in that chat.
+ */
 export async function readChats(job) {
   const T = Math.max(3000, job.timeoutMs || 10000);
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -58,7 +63,11 @@ export async function readChats(job) {
     el.dispatchEvent(new MouseEvent("click", base));
   };
 
+  const norm = (s) => (s || "").replace(/[‘’`´]/g, "'").replace(/\s+/g, " ").trim().toLowerCase();
   const skip = new Set((job.skipUserIds || []).map((s) => String(s).toLowerCase()));
+  const replies = (job.replyMessages || []).map((s) => String(s)).filter((s) => s.trim().length > 0);
+  const dryRun = !!job.dryRun;
+  const sendDelay = Math.max(0, job.sendDelayMs ?? 2000);
   const maxChats = Math.max(1, job.maxChats || 25);
   const result = { hadDot: false, chats: [], skippedAds: 0, skippedReview: [], errors: [], closedList: false };
   let step = "Start";
@@ -149,6 +158,70 @@ export async function readChats(job) {
     };
   };
 
+  // ---- replying ----
+  const textArea = () => all('[data-testid="chatTextArea"]')[0] || null;
+  const sendButton = () => all('[data-testid="sendButton"]')[0] || null;
+  const isOurs = (el) => el.classList.contains("sent_message") || !!el.closest(".chat-text-message-stack--sent");
+
+  // Angular only notices a value it was told about, so set it the way typing does.
+  const setText = (ta, value) => {
+    ta.focus();
+    const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set;
+    setter.call(ta, value);
+    ta.dispatchEvent(new Event("input", { bubbles: true }));
+    ta.dispatchEvent(new Event("change", { bubbles: true }));
+  };
+
+  /** Sends the next message of the sequence in the open chat. Returns what happened. */
+  const sendReply = async (chat) => {
+    const last = chat.messages[chat.messages.length - 1];
+    if (!last) return { status: "skipped", reason: "no messages found in the chat" };
+    if (last.from !== "them") return { status: "skipped", reason: "last message is ours; waiting for their reply" };
+
+    const ours = chat.messages.filter((m) => m.from === "us" && m.type === "text").length;
+    if (ours >= replies.length) {
+      return { status: "finished", reason: `all ${replies.length} message(s) of the sequence already sent` };
+    }
+    const index = ours + 1;
+    const text = replies[ours];
+
+    const ta = await waitFor(textArea, 4000);
+    if (!ta) return { status: "failed", index, text, reason: "message box not found" };
+    if (ta.value.trim().length > 0) {
+      return { status: "failed", index, text, reason: "message box already has text in it; not sending" };
+    }
+
+    setText(ta, text);
+    await sleep(sendDelay);
+    if (ta.value !== text) return { status: "failed", index, text, reason: "the typed message was changed or cleared" };
+
+    if (dryRun) {
+      setText(ta, "");
+      return { status: "dry_run", index, text };
+    }
+
+    const btn = sendButton();
+    if (!btn) {
+      setText(ta, "");
+      return { status: "failed", index, text, reason: "send button not found" };
+    }
+
+    const before = new Set(msgEls().map((el) => el.id));
+    const wanted = norm(text);
+    click(btn);
+    const confirmed = await waitFor(() =>
+      msgEls().find((el) => !before.has(el.id) && isOurs(el) && norm(el.textContent).includes(wanted)), T);
+    if (confirmed) return { status: "sent", index, text };
+
+    // Not shown in the chat yet. An emptied box means the site took it.
+    const box = textArea();
+    if (box && box.value.trim().length === 0) {
+      return { status: "sent", index, text, reason: "sent, but not yet shown in the chat" };
+    }
+    if (box) setText(box, ""); // don't leave it behind as a draft
+    return { status: "failed", index, text, reason: "message did not send (still in the message box)" };
+  };
+
   /** Back, Back → chat list (as on the site). */
   const backToList = async () => {
     const b1 = await waitFor(() => all('[data-testid="headerGoBackButton"]')[0], 4000);
@@ -223,7 +296,19 @@ export async function readChats(job) {
 
       step = "Read chat";
       await loadFullHistory();
-      result.chats.push(readOpenChat(row.id));
+      let chat = readOpenChat(row.id);
+
+      if (replies.length > 0) {
+        step = "Reply";
+        const reply = await sendReply(chat);
+        if (reply.status === "failed") result.errors.push({ userId: key, step, message: reply.reason });
+        if (reply.status === "sent") {
+          await sleep(800);
+          chat = readOpenChat(row.id); // include what we just sent in the saved log
+        }
+        chat.reply = reply;
+      }
+      result.chats.push(chat);
 
       step = "Back to chat list";
       if (!(await backToList())) {
@@ -260,7 +345,10 @@ export async function readChats(job) {
     return {
       ok,
       step: ok ? "Finished" : result.errors[0].step,
-      message: ok ? `read ${result.chats.length} chat(s)` : `${result.errors.length} problem(s): ${result.errors[0].message}`,
+      message: ok
+        ? `read ${result.chats.length} chat(s)` +
+          (replies.length ? `, replied in ${result.chats.filter((c) => c.reply && (c.reply.status === "sent" || c.reply.status === "dry_run")).length}` : "")
+        : `${result.errors.length} problem(s): ${result.errors[0].message}`,
       data: result,
     };
   } catch (e) {

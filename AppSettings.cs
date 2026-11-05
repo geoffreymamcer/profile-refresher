@@ -30,6 +30,12 @@ public sealed class AppSettings
     public string Hotkey { get; set; } = "Alt+Shift+H";
     public double StepTimeoutSeconds { get; set; } = 10;
 
+    // "Chat & reply" task
+    public List<string> ReplyMessages { get; set; } = new();
+    public bool ReplyDryRun { get; set; } = true;
+    public double HostingEveryMinutes { get; set; } = 20;
+    public double SendDelaySeconds { get; set; } = 2;
+
     private static string FilePath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ProfileRefresher", "settings.json");
 

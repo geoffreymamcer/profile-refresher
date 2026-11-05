@@ -25,6 +25,20 @@ public sealed class ChatData
     public string? Name { get; set; }
     public string? ProfileLabel { get; set; }
     public List<MessageData> Messages { get; set; } = new();
+
+    /// <summary>Set when the job asked for replies.</summary>
+    public ReplyData? Reply { get; set; }
+}
+
+/// <summary>What happened when replying in one chat.</summary>
+public sealed class ReplyData
+{
+    /// <summary>"sent", "dry_run", "finished" (sequence used up), "skipped" or "failed".</summary>
+    public string Status { get; set; } = "";
+    /// <summary>1-based position in the message sequence.</summary>
+    public int? Index { get; set; }
+    public string? Text { get; set; }
+    public string? Reason { get; set; }
 }
 
 public sealed class MessageData

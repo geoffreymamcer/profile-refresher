@@ -17,6 +17,21 @@ public sealed class RunSettings
     public required int Loops { get; init; }
 }
 
+/// <summary>
+/// "Chat &amp; reply" schedule: chat passes until one reads no new chats, then one refresh pass, repeating.
+/// An I'm hosting pass runs every <see cref="HostingEvery"/>, but only once the current pass has finished.
+/// </summary>
+public sealed class ContinuousSettings
+{
+    public required IReadOnlyList<BrowserProfile> Profiles { get; init; }
+    public required LoopStep ChatStep { get; init; }
+    public required LoopStep RefreshStep { get; init; }
+    public required LoopStep HostingStep { get; init; }
+    public required TimeSpan HostingEvery { get; init; }
+    public required TimeSpan Delay { get; init; }
+    public TimeSpan Jitter { get; init; } = TimeSpan.Zero;
+}
+
 /// <summary>Pause gate: awaiting it completes immediately unless paused.</summary>
 public sealed class PauseController
 {
@@ -64,32 +79,7 @@ public sealed class RefreshRunner
                 var profile = s.Profiles[i];
                 string position = $"Loop {loop}/{s.Loops} ({loopStep.Name}) · Profile {i + 1}/{count}";
 
-                await WaitWhilePausedAsync(position, ct);
-                ct.ThrowIfCancellationRequested();
-
-                Status?.Invoke($"{position} · {loopStep.ActionLabel} {profile.DisplayName}…");
-
-                // Re-scan windows each time so closed/moved windows are handled.
-                var windows = await Task.Run(() => _scanner.Scan(readCommandLines: false).Windows
-                    .Where(w => w.ProfileKey == profile.Key)
-                    .ToList(), CancellationToken.None);
-
-                RefreshOutcome outcome;
-                try
-                {
-                    outcome = await loopStep.Action(profile, windows, ct);
-                }
-                catch (OperationCanceledException) when (ct.IsCancellationRequested)
-                {
-                    throw;
-                }
-                catch (Exception ex)
-                {
-                    outcome = new RefreshOutcome(false, "error: " + ex.Message);
-                }
-
-                if (outcome.Ok) Succeeded++; else Failed++;
-                Log?.Invoke($"[{loop}/{s.Loops} {loopStep.Name}] {profile.DisplayName}: {outcome.Message}");
+                await RunOneAsync(profile, loopStep, position, $"{loop}/{s.Loops} {loopStep.Name}", ct);
 
                 bool isLast = loop == s.Loops && i == count - 1;
                 if (!isLast)
@@ -103,6 +93,94 @@ public sealed class RefreshRunner
 
             Log?.Invoke($"Loop {loop} of {s.Loops} ({loopStep.Name}) complete.");
         }
+    }
+
+    /// <summary>Runs until cancelled. See <see cref="ContinuousSettings"/>.</summary>
+    public async Task RunContinuousAsync(ContinuousSettings s, CancellationToken ct)
+    {
+        var nextHosting = DateTimeOffset.Now + s.HostingEvery;
+        Log?.Invoke($"First I'm hosting pass at about {nextHosting:HH:mm}, then every {s.HostingEvery.TotalMinutes:0.##} min.");
+
+        for (int cycle = 1; ; cycle++)
+        {
+            // Keep doing chat passes while they still find new chats (replies can bring new messages).
+            for (int round = 1; ; round++)
+            {
+                bool found = await RunPassAsync(s, s.ChatStep, $"Cycle {cycle} · chats {round}", ct);
+                nextHosting = await HostingIfDueAsync(s, nextHosting, ct);
+                if (!found) break;
+                Log?.Invoke("New chats were read in this pass; checking all profiles again.");
+            }
+
+            Log?.Invoke("No new chats on any profile: refresh pass.");
+            await RunPassAsync(s, s.RefreshStep, $"Cycle {cycle} · refresh", ct);
+            nextHosting = await HostingIfDueAsync(s, nextHosting, ct);
+        }
+    }
+
+    /// <summary>Runs the I'm hosting pass if it's due. Returns when the next one is due.</summary>
+    private async Task<DateTimeOffset> HostingIfDueAsync(ContinuousSettings s, DateTimeOffset due, CancellationToken ct)
+    {
+        if (DateTimeOffset.Now < due) return due;
+
+        var started = DateTimeOffset.Now;
+        Log?.Invoke($"I'm hosting is due (was due {due:HH:mm}).");
+        await RunPassAsync(s, s.HostingStep, "I'm hosting", ct);
+        var next = started + s.HostingEvery;
+        Log?.Invoke($"Next I'm hosting pass at about {next:HH:mm}.");
+        return next;
+    }
+
+    /// <summary>One pass through every profile. Returns true if any profile reported work done.</summary>
+    private async Task<bool> RunPassAsync(ContinuousSettings s, LoopStep step, string label, CancellationToken ct)
+    {
+        bool any = false;
+        int count = s.Profiles.Count;
+        for (int i = 0; i < count; i++)
+        {
+            string position = $"{label} · Profile {i + 1}/{count}";
+            var outcome = await RunOneAsync(s.Profiles[i], step, position, label, ct);
+            any |= outcome.DidWork;
+
+            var wait = s.Delay;
+            if (s.Jitter > TimeSpan.Zero)
+                wait += TimeSpan.FromMilliseconds(Random.Shared.NextDouble() * s.Jitter.TotalMilliseconds);
+            await DelayAsync(wait, position, ct);
+        }
+        return any;
+    }
+
+    /// <summary>Runs one step for one profile and logs the outcome.</summary>
+    private async Task<RefreshOutcome> RunOneAsync(BrowserProfile profile, LoopStep step, string position,
+        string logTag, CancellationToken ct)
+    {
+        await WaitWhilePausedAsync(position, ct);
+        ct.ThrowIfCancellationRequested();
+
+        Status?.Invoke($"{position} · {step.ActionLabel} {profile.DisplayName}…");
+
+        // Re-scan windows each time so closed/moved windows are handled.
+        var windows = await Task.Run(() => _scanner.Scan(readCommandLines: false).Windows
+            .Where(w => w.ProfileKey == profile.Key)
+            .ToList(), CancellationToken.None);
+
+        RefreshOutcome outcome;
+        try
+        {
+            outcome = await step.Action(profile, windows, ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            outcome = new RefreshOutcome(false, "error: " + ex.Message);
+        }
+
+        if (outcome.Ok) Succeeded++; else Failed++;
+        Log?.Invoke($"[{logTag}] {profile.DisplayName}: {outcome.Message}");
+        return outcome;
     }
 
     private async Task WaitWhilePausedAsync(string position, CancellationToken ct)

@@ -13,6 +13,7 @@ public partial class MainWindow : Window
 
     private readonly ObservableCollection<BrowserProfile> _profiles = new();
     private readonly ObservableCollection<string> _log = new();
+    private readonly ObservableCollection<ReplyMessageItem> _replies = new();
     private readonly AppSettings _settings = AppSettings.Load();
 
     private BrowserScanner? _scanner;
@@ -36,9 +37,10 @@ public partial class MainWindow : Window
         BrowserCombo.ItemsSource = new[] { BrowserKind.Chrome, BrowserKind.Edge };
         ProfileList.ItemsSource = _profiles;
         LogList.ItemsSource = _log;
+        ReplyList.ItemsSource = _replies;
 
         BrowserCombo.SelectedIndex = Math.Clamp(_settings.BrowserIndex, 0, 1);
-        TaskCombo.SelectedIndex = Math.Clamp(_settings.TaskIndex, 0, 3);
+        TaskCombo.SelectedIndex = Math.Clamp(_settings.TaskIndex, 0, 4);
         EveryBox.Text = _settings.RefreshesBeforeHosting.ToString(CultureInfo.CurrentCulture);
         OrderCombo.SelectedIndex = _settings.OrderMode switch { "opened" => 1, "name" => 2, _ => 0 };
 
@@ -56,6 +58,13 @@ public partial class MainWindow : Window
         TabMatchBox.Text = _settings.SiteTabMatch;
         HotkeyBox.Text = _settings.Hotkey;
         StepTimeoutBox.Text = _settings.StepTimeoutSeconds.ToString(CultureInfo.CurrentCulture);
+
+        foreach (var m in _settings.ReplyMessages) _replies.Add(new ReplyMessageItem(m));
+        if (_replies.Count == 0) _replies.Add(new ReplyMessageItem());
+        RenumberReplies();
+        HostingEveryBox.Text = _settings.HostingEveryMinutes.ToString(CultureInfo.CurrentCulture);
+        SendDelayBox.Text = _settings.SendDelaySeconds.ToString(CultureInfo.CurrentCulture);
+        DryRunCheck.IsChecked = _settings.ReplyDryRun;
 
         AddLog("Browser Profile Refresher · " + Credits.Text);
         UpdateTaskPanels();
@@ -122,17 +131,24 @@ public partial class MainWindow : Window
     private bool IsStatusTask => TaskCombo.SelectedIndex == 1;
     private bool IsCombinedTask => TaskCombo.SelectedIndex == 2;
     private bool IsReadTask => TaskCombo.SelectedIndex == 3;
+    private bool IsChatTask => TaskCombo.SelectedIndex == 4;
 
     private static Visibility Show(bool on) => on ? Visibility.Visible : Visibility.Collapsed;
 
     private void UpdateTaskPanels()
     {
-        RefreshPanel.Visibility = Show(IsRefreshTask || IsCombinedTask);
-        StatusPanel.Visibility = Show(IsStatusTask || IsCombinedTask);
+        RefreshPanel.Visibility = Show(IsRefreshTask || IsCombinedTask || IsChatTask);
+        StatusPanel.Visibility = Show(IsStatusTask || IsCombinedTask || IsChatTask);
         CombinedPanel.Visibility = Show(IsCombinedTask);
-        ReadPanel.Visibility = Show(IsReadTask);
-        ExtensionPanel.Visibility = Show(IsStatusTask || IsCombinedTask || IsReadTask);
-        LoopsHint.Text = IsCombinedTask ? "total passes (refresh + I'm hosting), then stop" : "complete passes, then stop";
+        ChatPanel.Visibility = Show(IsChatTask);
+        ReadPanel.Visibility = Show(IsReadTask || IsChatTask);
+        ExtensionPanel.Visibility = Show(IsStatusTask || IsCombinedTask || IsReadTask || IsChatTask);
+        ReadHint.Text = IsChatTask
+            ? "Replies in unread chats with the messages above. Every chat is saved here."
+            : "Read only: opens unread chats and saves them. Nothing is sent.";
+        LoopsHint.Text = IsCombinedTask ? "total passes (refresh + I'm hosting), then stop"
+            : IsChatTask ? "not used: this task runs until you press Terminate"
+            : "complete passes, then stop";
         UpdatePatternPreview();
     }
 
@@ -153,6 +169,27 @@ public partial class MainWindow : Window
         string text = string.Join(" ", parts) + (loops > shown ? " …" : "");
         int hosting = loops / (every + 1);
         return $"{text}   ({loops - hosting} refresh, {hosting} I'm hosting)";
+    }
+
+    // ---------- Message list (Chat & reply) ----------
+
+    private void RenumberReplies()
+    {
+        for (int i = 0; i < _replies.Count; i++) _replies[i].Number = i + 1;
+    }
+
+    private void AddMessage_Click(object sender, RoutedEventArgs e)
+    {
+        _replies.Add(new ReplyMessageItem());
+        RenumberReplies();
+    }
+
+    private void RemoveMessage_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is not ReplyMessageItem item) return;
+        if (_replies.Count == 1) item.Text = ""; // always keep one box
+        else _replies.Remove(item);
+        RenumberReplies();
     }
 
     // ---------- Detection ----------
@@ -229,10 +266,17 @@ public partial class MainWindow : Window
             loops = 1;
         }
 
-        bool wantsRefresh = IsRefreshTask || IsCombinedTask;
-        bool wantsHosting = IsStatusTask || IsCombinedTask;
-        bool wantsRead = IsReadTask;
+        bool chatTask = IsChatTask;
+        bool wantsRefresh = IsRefreshTask || IsCombinedTask || chatTask;
+        bool wantsHosting = IsStatusTask || IsCombinedTask || chatTask;
+        bool wantsRead = IsReadTask || chatTask;
         bool wantsExtension = wantsHosting || wantsRead;
+
+        string[]? replyMessages = null;
+        bool dryRun = false;
+        int sendDelayMs = 2000;
+        TimeSpan hostingEvery = TimeSpan.FromMinutes(20);
+        if (chatTask && !TryReadChatOptions(out replyMessages, out dryRun, out sendDelayMs, out hostingEvery)) return;
 
         int every = 0;
         if (IsCombinedTask)
@@ -317,8 +361,12 @@ public partial class MainWindow : Window
 
         if (wantsRead)
         {
-            readStep = new LoopStep("Read chats", "checking messages on", (profile, windows, ct) =>
-                ReadChatsAsync(profile, windows, activeBridge!, tabMatch, stepMs, TriggerFor, ct));
+            var rm = replyMessages;
+            readStep = rm is null
+                ? new LoopStep("Read chats", "checking messages on", (profile, windows, ct) =>
+                    ReadChatsAsync(profile, windows, activeBridge!, tabMatch, stepMs, TriggerFor, ct))
+                : new LoopStep(dryRun ? "Chats (dry run)" : "Chats", "checking and replying on", (profile, windows, ct) =>
+                    ReadChatsAsync(profile, windows, activeBridge!, tabMatch, stepMs, TriggerFor, ct, rm, dryRun, sendDelayMs));
         }
 
         Func<int, LoopStep> stepForLoop;
@@ -336,6 +384,14 @@ public partial class MainWindow : Window
             var h = hostingStep!;
             stepForLoop = _ => h;
             description = $"set status to \"{status}\" and save";
+        }
+        else if (chatTask)
+        {
+            var rd = readStep!;
+            stepForLoop = _ => rd;  // used by "Test 1 profile": one chat pass
+            description = (dryRun ? "DRY RUN (nothing is sent): " : "") +
+                $"reply in unread chats with {replyMessages!.Length} message(s) in sequence; chat passes until no new chats, " +
+                $"then 1 refresh pass, repeating; I'm hosting every {hostingEvery.TotalMinutes:0.##} min";
         }
         else if (IsReadTask)
         {
@@ -369,14 +425,33 @@ public partial class MainWindow : Window
         _cts = new CancellationTokenSource();
         SetRunning(true);
 
-        AddLog($"{(testOnly ? "Test" : "Started")}: {description}; {selected.Count} profile(s) × {loops} loop(s), " +
+        bool continuous = chatTask && !testOnly;
+        string extent = continuous ? "until Terminate" : $"{loops} loop(s)";
+        AddLog($"{(testOnly ? "Test" : "Started")}: {description}; {selected.Count} profile(s) × {extent}, " +
                $"{delay.TotalSeconds:0.##}s delay" + (jitter > TimeSpan.Zero ? $" + up to {jitter.TotalSeconds:0.##}s random." : "."));
 
         string final;
         try
         {
-            await _runner.RunAsync(settings, _cts.Token);
-            final = testOnly ? "Test finished." : $"Finished all {loops} loop(s).";
+            if (continuous)
+            {
+                await _runner.RunContinuousAsync(new ContinuousSettings
+                {
+                    Profiles = selected,
+                    ChatStep = readStep!,
+                    RefreshStep = refreshStep!,
+                    HostingStep = hostingStep!,
+                    HostingEvery = hostingEvery,
+                    Delay = delay,
+                    Jitter = jitter,
+                }, _cts.Token);
+                final = "Stopped.";
+            }
+            else
+            {
+                await _runner.RunAsync(settings, _cts.Token);
+                final = testOnly ? "Test finished." : $"Finished all {loops} loop(s).";
+            }
         }
         catch (OperationCanceledException)
         {
@@ -466,6 +541,28 @@ public partial class MainWindow : Window
         return true;
     }
 
+    private bool TryReadChatOptions(out string[] messages, out bool dryRun, out int sendDelayMs, out TimeSpan hostingEvery)
+    {
+        messages = _replies.Select(r => r.Text.Trim()).Where(t => t.Length > 0).ToArray();
+        dryRun = DryRunCheck.IsChecked == true;
+        sendDelayMs = 0;
+        hostingEvery = default;
+
+        if (messages.Length == 0)
+        {
+            MessageBox.Show(this, "Type at least one message to send.", Title, MessageBoxButton.OK, MessageBoxImage.Warning);
+            return false;
+        }
+        if (!TryParseDouble(HostingEveryBox.Text, out double mins) || mins < 1 || mins > 1440)
+            return Fail("I'm hosting interval must be between 1 and 1440 minutes.", HostingEveryBox);
+        if (!TryParseDouble(SendDelayBox.Text, out double secs) || secs < 0 || secs > 60)
+            return Fail("Wait before sending must be between 0 and 60 seconds.", SendDelayBox);
+
+        sendDelayMs = (int)(secs * 1000);
+        hostingEvery = TimeSpan.FromMinutes(mins);
+        return true;
+    }
+
     private bool TryReadEvery(out int every)
     {
         if (!int.TryParse(EveryBox.Text.Trim(), NumberStyles.Integer, CultureInfo.CurrentCulture, out every) ||
@@ -523,14 +620,16 @@ public partial class MainWindow : Window
 
     // ---------- Read chats (Stage 1: read only) ----------
 
+    /// <param name="replies">Message sequence to reply with, or null to only read.</param>
     private static async Task<RefreshOutcome> ReadChatsAsync(BrowserProfile profile, List<BrowserWindow> windows,
         ExtensionBridge bridge, string tabMatch, int stepMs, Func<IntPtr, Func<Task<bool>>> triggerFor,
-        CancellationToken ct)
+        CancellationToken ct, string[]? replies = null, bool dryRun = false, int sendDelayMs = 2000)
     {
         if (windows.Count == 0) return new RefreshOutcome(false, "no open window for this profile (skipped)");
 
         var job = new ExtensionJob(Guid.NewGuid().ToString("N"), "readChats", tabMatch, stepMs,
-            SkipUserIds: ConversationStore.ReviewUserIds(profile), MaxChats: 25);
+            SkipUserIds: ConversationStore.ReviewUserIds(profile), MaxChats: 25,
+            ReplyMessages: replies, DryRun: dryRun, SendDelayMs: sendDelayMs);
         var outcome = await bridge.RunJobAsync(job, triggerFor(windows[0].Hwnd), ct, TimeSpan.FromMinutes(8));
 
         var data = ConversationStore.ParseReadChats(outcome.Data);
@@ -547,7 +646,8 @@ public partial class MainWindow : Window
                 lines.Add($"• user {c.UserId}{(r.IsNewContact ? " (new contact)" : "")}: " +
                           $"+{r.NewMessages} new, {c.ReceivedCount} received / {c.SentCount} sent (text only)" +
                           (r.NewlyNeedsReview ? "  → NEEDS REVIEW (10/10 reached)" :
-                           c.Status == "needs_review" ? "  → needs review" : ""));
+                           c.Status == "needs_review" ? "  → needs review" : "") +
+                          DescribeReply(chat.Reply));
             }
             catch (Exception ex)
             {
@@ -563,9 +663,27 @@ public partial class MainWindow : Window
         if (!data.ClosedList) summary += ", WARNING: chat list may still be open";
         if (!outcome.Ok && data.Errors.Count == 0) summary += $" ({outcome.Message})";
 
+        if (replies is not null)
+        {
+            int sent = data.Chats.Count(c => c.Reply?.Status == "sent");
+            int dry = data.Chats.Count(c => c.Reply?.Status == "dry_run");
+            summary += dryRun ? $", {dry} reply(ies) typed (dry run, not sent)" : $", {sent} reply(ies) sent";
+        }
+
         string message = lines.Count == 0 ? summary : summary + "\n      " + string.Join("\n      ", lines);
-        return new RefreshOutcome(outcome.Ok, message);
+        return new RefreshOutcome(outcome.Ok, message) { DidWork = data.Chats.Count > 0 };
     }
+
+    private static string DescribeReply(ReplyData? r) => r?.Status switch
+    {
+        null => "",
+        "sent" => $"  → sent #{r.Index}" + (string.IsNullOrEmpty(r.Reason) ? "" : $" ({r.Reason})"),
+        "dry_run" => $"  → dry run: typed #{r.Index}, not sent",
+        "finished" => "  → no reply: all messages already sent",
+        "skipped" => $"  → no reply: {r.Reason}",
+        "failed" => $"  → reply #{r.Index} FAILED: {r.Reason}",
+        _ => $"  → reply: {r.Status}",
+    };
 
     private void OpenLogs_Click(object sender, RoutedEventArgs e)
     {
@@ -615,6 +733,11 @@ public partial class MainWindow : Window
         _settings.SiteTabMatch = TabMatchBox.Text.Trim();
         _settings.Hotkey = HotkeyBox.Text.Trim();
         if (TryParseDouble(StepTimeoutBox.Text, out var st)) _settings.StepTimeoutSeconds = st;
+
+        _settings.ReplyMessages = _replies.Select(r => r.Text.Trim()).Where(t => t.Length > 0).ToList();
+        _settings.ReplyDryRun = DryRunCheck.IsChecked == true;
+        if (TryParseDouble(HostingEveryBox.Text, out var hm)) _settings.HostingEveryMinutes = hm;
+        if (TryParseDouble(SendDelayBox.Text, out var sd)) _settings.SendDelaySeconds = sd;
 
         _settings.Save();
     }

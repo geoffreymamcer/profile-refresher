@@ -96,6 +96,41 @@ When a conversation reaches **10 received and 10 sent** text messages, its file 
 
 Opening a chat marks it as read on the site, the same as when you open it yourself.
 
+## Use "Chat & reply + refresh + I'm hosting"
+
+Replies in unread chats with your own messages, and keeps the refresh and I'm hosting passes going.
+It runs until you press **Terminate**; the loop count is not used.
+
+**Messages to send (in order).** Type each message in its own box. **+ Add message** adds a box and
+**✕** removes one. The list is a sequence, shared by all profiles: in each chat, the first reply is
+message 1, the next reply in that chat is message 2, and so on. The position is worked out from how many
+text messages we have already sent in that chat, so a message you send by hand also moves it along.
+
+For each unread chat it:
+
+1. Opens and reads the chat (same as "Check & read new chats").
+2. Replies only if the **last message is theirs**. If all messages of the sequence have been sent, it
+   doesn't reply.
+3. Types the next message, waits **Wait before sending** (default 2 s), presses Send, and checks the
+   message appears in the chat. The chat log is saved with the reply included.
+
+**The schedule:**
+
+1. A **chat pass** goes through every profile. Profiles without the orange dot are skipped quickly.
+2. Chat passes repeat while a pass still read at least one chat (a reply may bring a new message).
+3. When a pass reads no new chats, one **refresh pass** runs, then it goes back to step 1.
+4. Every **I'm hosting every** minutes (default 20; the first one 20 minutes after Start) an I'm hosting
+   pass runs. If it falls due in the middle of a pass, the current pass finishes first.
+
+Chats that are `needs_review` (10/10) stay unread and skipped, so a dot that only has those doesn't
+keep the chat passes going.
+
+**Dry run** (on by default): types each message, waits, then clears it without pressing Send. Use it
+with **Test 1 profile** (one chat pass on the first ticked profile) to watch it work, then untick it.
+
+The log shows what happened in each chat, e.g. `→ sent #2`, `→ no reply: all messages already sent`,
+`→ no reply: last message is ours; waiting for their reply` or `→ reply #1 FAILED: …`.
+
 ## Use "Refresh one tab"
 
 Choose the tab (the active tab, or the first tab whose title contains some text), set the delay and

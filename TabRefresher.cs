@@ -6,7 +6,11 @@ public enum TargetMode { ActiveTab, TitleContains }
 
 public sealed record TabTarget(TargetMode Mode, string Text);
 
-public sealed record RefreshOutcome(bool Ok, string Message);
+public sealed record RefreshOutcome(bool Ok, string Message)
+{
+    /// <summary>Chat passes: true when at least one chat was opened (so another chat pass may be needed).</summary>
+    public bool DidWork { get; init; }
+}
 
 /// <summary>
 /// Refreshes one tab in a browser window through UI Automation by invoking the toolbar's

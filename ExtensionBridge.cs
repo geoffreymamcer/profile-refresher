@@ -5,7 +5,10 @@ using System.Text.Json;
 
 namespace ProfileRefresher;
 
-/// <summary>A job for the extension. Type "hosting" sets the cruising status; "readChats" reads unread chats.</summary>
+/// <summary>
+/// A job for the extension. Type "hosting" sets the cruising status; "readChats" reads unread chats
+/// and, when ReplyMessages is set, replies with the next message of that sequence.
+/// </summary>
 public sealed record ExtensionJob(
     string Id,
     string Type,
@@ -14,7 +17,10 @@ public sealed record ExtensionJob(
     string TargetStatus = "",
     string StatusRowLabel = "",
     string[]? SkipUserIds = null,
-    int MaxChats = 25);
+    int MaxChats = 25,
+    string[]? ReplyMessages = null,
+    bool DryRun = false,
+    int SendDelayMs = 2000);
 
 public sealed record JobResult(string? Id, bool Ok, string? Step, string? Message, JsonElement? Data);
 
