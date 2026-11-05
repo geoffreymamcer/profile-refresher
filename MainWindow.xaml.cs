@@ -691,13 +691,15 @@ public partial class MainWindow : Window
     private static string DescribeReply(ReplyData? r) => r?.Status switch
     {
         null => "",
-        "sent" => $"  → sent #{r.Index}" + (string.IsNullOrEmpty(r.Reason) ? "" : $" ({r.Reason})"),
-        "dry_run" => $"  → dry run: typed #{r.Index}, not sent",
+        "sent" => $"  → sent {Numbers(r)}" + (string.IsNullOrEmpty(r.Reason) ? "" : $" ({r.Reason})"),
+        "dry_run" => $"  → dry run: typed {Numbers(r)}, not sent",
         "finished" => "  → no reply: all messages already sent",
         "skipped" => $"  → no reply: {r.Reason}",
         "failed" => $"  → reply #{r.Index} FAILED: {r.Reason}",
         _ => $"  → reply: {r.Status}",
     };
+
+    private static string Numbers(ReplyData r) => r.FromIndex is { } f ? $"#{f} and #{r.Index}" : $"#{r.Index}";
 
     private void OpenLogs_Click(object sender, RoutedEventArgs e)
     {

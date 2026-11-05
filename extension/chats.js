@@ -172,19 +172,8 @@ export async function readChats(job) {
     ta.dispatchEvent(new Event("change", { bubbles: true }));
   };
 
-  /** Sends the next message of the sequence in the open chat. Returns what happened. */
-  const sendReply = async (chat) => {
-    const last = chat.messages[chat.messages.length - 1];
-    if (!last) return { status: "skipped", reason: "no messages found in the chat" };
-    if (last.from !== "them") return { status: "skipped", reason: "last message is ours; waiting for their reply" };
-
-    const ours = chat.messages.filter((m) => m.from === "us" && m.type === "text").length;
-    if (ours >= replies.length) {
-      return { status: "finished", reason: `all ${replies.length} message(s) of the sequence already sent` };
-    }
-    const index = ours + 1;
-    const text = replies[ours];
-
+  /** Types `text` (message number `index`), waits, and sends it. Returns what happened. */
+  const sendOne = async (text, index) => {
     const ta = await waitFor(textArea, 4000);
     if (!ta) return { status: "failed", index, text, reason: "message box not found" };
     if (ta.value.trim().length > 0) {
@@ -220,6 +209,34 @@ export async function readChats(job) {
     }
     if (box) setText(box, ""); // don't leave it behind as a draft
     return { status: "failed", index, text, reason: "message did not send (still in the message box)" };
+  };
+
+  /**
+   * Sends the next message of the sequence in the open chat. Returns what happened.
+   * The second-to-last message is followed straight away by the last one (no waiting for a reply).
+   */
+  const sendReply = async (chat) => {
+    const last = chat.messages[chat.messages.length - 1];
+    if (!last) return { status: "skipped", reason: "no messages found in the chat" };
+    if (last.from !== "them") return { status: "skipped", reason: "last message is ours; waiting for their reply" };
+
+    const ours = chat.messages.filter((m) => m.from === "us" && m.type === "text").length;
+    if (ours >= replies.length) {
+      return { status: "finished", reason: `all ${replies.length} message(s) of the sequence already sent` };
+    }
+
+    const first = ours + 1;
+    const r = await sendOne(replies[ours], first);
+    const pairWithLast = replies.length >= 2 && first === replies.length - 1;
+    if (!pairWithLast || (r.status !== "sent" && r.status !== "dry_run")) return r;
+
+    // Second-to-last went out: send the last one right after it.
+    await sleep(500);
+    const r2 = await sendOne(replies[first], first + 1);
+    if (r2.status === "failed") {
+      r2.reason += ` (#${first} was ${r.status === "dry_run" ? "typed" : "sent"})`;
+    }
+    return { ...r2, fromIndex: first };
   };
 
   /** Back, Back → chat list (as on the site). */

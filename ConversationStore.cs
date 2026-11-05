@@ -35,8 +35,10 @@ public sealed class ReplyData
 {
     /// <summary>"sent", "dry_run", "finished" (sequence used up), "skipped" or "failed".</summary>
     public string Status { get; set; } = "";
-    /// <summary>1-based position in the message sequence.</summary>
+    /// <summary>1-based position in the message sequence (the last one sent, when two went out).</summary>
     public int? Index { get; set; }
+    /// <summary>Set when two messages went out together (second-to-last + last): the first of them.</summary>
+    public int? FromIndex { get; set; }
     public string? Text { get; set; }
     public string? Reason { get; set; }
 }

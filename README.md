@@ -113,6 +113,9 @@ For each unread chat it:
    doesn't reply.
 3. Types the next message, waits **Wait before sending** (default 2 s), presses Send, and checks the
    message appears in the chat. The chat log is saved with the reply included.
+4. If that message was the **second-to-last** of the list, it sends the **last** one right after it,
+   without waiting for another reply (each still waits **Wait before sending**). With a list of 2,
+   both go out together in the first reply.
 
 **The schedule:**
 
