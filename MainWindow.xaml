@@ -1,0 +1,260 @@
+<Window x:Class="ProfileRefresher.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Browser Profile Refresher · Developed by Jeymeyzer · XYZ Chatter (Team Mel)"
+        Width="640" Height="840" MinWidth="560" MinHeight="680"
+        WindowStartupLocation="CenterScreen"
+        FontFamily="Segoe UI" FontSize="13"
+        Closing="Window_Closing">
+
+    <Grid>
+    <!-- Tiled background watermark (does not block clicks) -->
+    <Rectangle IsHitTestVisible="False">
+        <Rectangle.Fill>
+            <VisualBrush TileMode="Tile" Viewport="0,0,360,150" ViewportUnits="Absolute" Stretch="None">
+                <VisualBrush.Visual>
+                    <Grid Width="360" Height="150">
+                        <TextBlock Text="Developed by Jeymeyzer · XYZ Chatter (Team Mel)"
+                                   FontSize="13" FontWeight="Bold" Foreground="Gray" Opacity="0.16"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <TextBlock.LayoutTransform>
+                                <RotateTransform Angle="-22" />
+                            </TextBlock.LayoutTransform>
+                        </TextBlock>
+                    </Grid>
+                </VisualBrush.Visual>
+            </VisualBrush>
+        </Rectangle.Fill>
+    </Rectangle>
+
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" MinHeight="110" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="140" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Browser selection -->
+        <DockPanel Grid.Row="0" Margin="0,0,0,8" LastChildFill="False">
+            <TextBlock Text="Browser" Width="56" VerticalAlignment="Center" FontWeight="SemiBold" />
+            <ComboBox x:Name="BrowserCombo" Width="190" VerticalAlignment="Center" />
+            <Button x:Name="DetectButton" Content="Detect profiles" Margin="10,0,0,0" Padding="14,5"
+                    Click="Detect_Click" DockPanel.Dock="Right" />
+        </DockPanel>
+
+        <!-- Task selection -->
+        <DockPanel Grid.Row="1" Margin="0,0,0,10" LastChildFill="False">
+            <TextBlock Text="Task" Width="56" VerticalAlignment="Center" FontWeight="SemiBold" />
+            <ComboBox x:Name="TaskCombo" Width="330" VerticalAlignment="Center">
+                <ComboBoxItem Content="Refresh one tab" />
+                <ComboBoxItem Content="Post I'm hosting in the global chat" />
+                <ComboBoxItem Content="Refresh + I'm hosting combined" />
+                <ComboBoxItem Content="Check &amp; read new chats (no replies)" />
+            </ComboBox>
+        </DockPanel>
+
+        <!-- Detected profiles -->
+        <GroupBox Grid.Row="2" Header="Open profiles (tick the ones to include)" Margin="0,0,0,10">
+            <DockPanel>
+            <DockPanel DockPanel.Dock="Top" Margin="4,4,4,6" LastChildFill="False">
+                <TextBlock Text="Run order" VerticalAlignment="Center" Margin="0,0,10,0" />
+                <ComboBox x:Name="OrderCombo" Width="280" VerticalAlignment="Center">
+                    <ComboBoxItem Content="By taskbar position (left to right)" />
+                    <ComboBoxItem Content="By time opened (earliest first)" />
+                    <ComboBoxItem Content="By profile name" />
+                </ComboBox>
+            </DockPanel>
+            <ListBox x:Name="ProfileList" BorderThickness="0" Margin="2"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <CheckBox IsChecked="{Binding IsSelected}" Margin="0,3">
+                            <StackPanel>
+                                <TextBlock Text="{Binding Header}" FontWeight="SemiBold" />
+                                <TextBlock Text="{Binding Details}" Opacity="0.65" FontSize="11.5"
+                                           TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                        </CheckBox>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+            </DockPanel>
+        </GroupBox>
+
+        <!-- Options -->
+        <GroupBox x:Name="OptionsBox" Grid.Row="3" Header="Options" Margin="0,0,0,12">
+            <StackPanel Margin="6">
+
+                <!-- Combined task -->
+                <Grid x:Name="CombinedPanel" Visibility="Collapsed" Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="180" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Text="Refresh passes, then" Margin="0,6" VerticalAlignment="Center" />
+                    <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Margin="0,3">
+                        <TextBox x:Name="EveryBox" Width="80" VerticalContentAlignment="Center" />
+                        <TextBlock Text="refresh passes, then 1 I'm hosting pass (repeats)" Margin="8,0,0,0"
+                                   VerticalAlignment="Center" />
+                    </StackPanel>
+                    <TextBlock x:Name="PatternText" Grid.Row="1" Grid.Column="1" Margin="0,2,0,4" Opacity="0.75"
+                               FontFamily="Cascadia Mono, Consolas" TextWrapping="Wrap" />
+                </Grid>
+
+                <!-- Refresh task -->
+                <Grid x:Name="RefreshPanel">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="180" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" Text="Tab to refresh" Margin="0,4" />
+                    <RadioButton x:Name="ActiveTabRadio" Grid.Row="0" Grid.Column="1" GroupName="Target"
+                                 Content="Active tab in the profile's front-most window" IsChecked="True" Margin="0,4" />
+                    <DockPanel Grid.Row="1" Grid.Column="1" Margin="0,2,0,6">
+                        <RadioButton x:Name="TitleTabRadio" GroupName="Target" Content="Tab whose title contains"
+                                     VerticalAlignment="Center" />
+                        <TextBox x:Name="TitleBox" Margin="8,0,0,0" MinWidth="120" VerticalContentAlignment="Center"
+                                 IsEnabled="{Binding IsChecked, ElementName=TitleTabRadio}" />
+                    </DockPanel>
+                    <CheckBox x:Name="KeyFallbackCheck" Grid.Row="2" Grid.Column="1" Margin="0,4,0,6"
+                              Content="If the reload button can't be used, focus the window and press F5" />
+                </Grid>
+
+                <!-- Read chats task -->
+                <Grid x:Name="ReadPanel" Visibility="Collapsed" Margin="0,0,0,6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="180" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Chat logs" Margin="0,6" VerticalAlignment="Center" />
+                    <DockPanel Grid.Column="1" Margin="0,3" LastChildFill="True">
+                        <Button x:Name="OpenLogsButton" Content="Open chat logs folder" Padding="10,3"
+                                Click="OpenLogs_Click" DockPanel.Dock="Left" />
+                        <TextBlock Text="Read only: opens unread chats and saves them. Nothing is sent." Opacity="0.65"
+                                   Margin="10,0,0,0" VerticalAlignment="Center" TextWrapping="Wrap" />
+                    </DockPanel>
+                </Grid>
+
+                <!-- Post I'm hosting task -->
+                <Grid x:Name="StatusPanel" Visibility="Collapsed">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="180" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" Text="Status to set" Margin="0,6" VerticalAlignment="Center" />
+                    <TextBox x:Name="StatusBox" Grid.Row="0" Grid.Column="1" Margin="0,3" VerticalContentAlignment="Center" />
+
+                    <TextBlock Grid.Row="1" Text="Status field label" Margin="0,6" VerticalAlignment="Center" />
+                    <TextBox x:Name="RowLabelBox" Grid.Row="1" Grid.Column="1" Margin="0,3" VerticalContentAlignment="Center"
+                             ToolTip="Text next to the status dropdown on the edit screen" />
+                </Grid>
+
+                <!-- Extension settings (any task that uses the helper extension) -->
+                <Grid x:Name="ExtensionPanel" Visibility="Collapsed">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="180" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" Text="Site tab (address contains)" Margin="0,6" VerticalAlignment="Center" />
+                    <TextBox x:Name="TabMatchBox" Grid.Row="0" Grid.Column="1" Margin="0,3" VerticalContentAlignment="Center"
+                             ToolTip="Part of the site's address, e.g. the domain. Leave empty to use the active tab." />
+
+                    <TextBlock Grid.Row="1" Text="Extension shortcut" Margin="0,6" VerticalAlignment="Center" />
+                    <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Margin="0,3">
+                        <TextBox x:Name="HotkeyBox" Width="120" VerticalContentAlignment="Center" />
+                        <TextBlock Text="must match chrome://extensions/shortcuts" Opacity="0.65" Margin="8,0,0,0"
+                                   VerticalAlignment="Center" />
+                    </StackPanel>
+
+                    <TextBlock Grid.Row="2" Text="Wait per step" Margin="0,6" VerticalAlignment="Center" />
+                    <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Margin="0,3">
+                        <TextBox x:Name="StepTimeoutBox" Width="80" VerticalContentAlignment="Center" />
+                        <TextBlock Text="seconds (max time to wait for each screen)" Opacity="0.65" Margin="8,0,0,0"
+                                   VerticalAlignment="Center" />
+                    </StackPanel>
+                </Grid>
+
+                <!-- Shared -->
+                <Grid Margin="0,6,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="180" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" Text="Delay after each profile" Margin="0,6" VerticalAlignment="Center" />
+                    <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Margin="0,3">
+                        <TextBox x:Name="DelayBox" Width="80" VerticalContentAlignment="Center" />
+                        <TextBlock Text="seconds" Margin="8,0,0,0" VerticalAlignment="Center" />
+                    </StackPanel>
+
+                    <TextBlock Grid.Row="1" Text="Plus random extra delay" Margin="0,6" VerticalAlignment="Center" />
+                    <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Margin="0,3">
+                        <TextBox x:Name="JitterBox" Width="80" VerticalContentAlignment="Center" />
+                        <TextBlock Text="seconds at most (0 = none)" Margin="8,0,0,0" VerticalAlignment="Center" />
+                    </StackPanel>
+
+                    <TextBlock Grid.Row="2" Text="Number of loops" Margin="0,6" VerticalAlignment="Center" />
+                    <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Margin="0,3">
+                        <TextBox x:Name="LoopsBox" Width="80" VerticalContentAlignment="Center" />
+                        <TextBlock x:Name="LoopsHint" Text="complete passes, then stop" Margin="8,0,0,0" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Grid>
+            </StackPanel>
+        </GroupBox>
+
+        <!-- Controls -->
+        <WrapPanel Grid.Row="4" Margin="0,0,0,10">
+            <Button x:Name="StartButton" Content="Start" Width="100" Padding="0,6" Click="Start_Click" IsDefault="True" />
+            <Button x:Name="TestButton" Content="Test 1 profile" Width="110" Padding="0,6" Margin="10,0,0,0" Click="Test_Click"
+                    ToolTip="Run once on the first ticked profile only" />
+            <Button x:Name="PauseButton" Content="Pause" Width="100" Padding="0,6" Margin="10,0,0,0" Click="Pause_Click" />
+            <Button x:Name="TerminateButton" Content="Terminate" Width="100" Padding="0,6" Margin="10,0,0,0" Click="Terminate_Click" />
+        </WrapPanel>
+
+        <TextBlock x:Name="StatusText" Grid.Row="5" Text="Ready." Margin="2,0,0,8" FontWeight="SemiBold"
+                   TextTrimming="CharacterEllipsis" />
+
+        <!-- Activity log -->
+        <ListBox x:Name="LogList" Grid.Row="6" FontFamily="Cascadia Mono, Consolas" FontSize="11.5"
+                 ScrollViewer.HorizontalScrollBarVisibility="Auto" />
+
+        <!-- Credit banner (text is set and verified in code) -->
+        <Border x:Name="CreditBanner" Grid.Row="7" Margin="0,10,0,0" Padding="12,8"
+                CornerRadius="6" Background="#1F6FEB">
+            <TextBlock x:Name="CreditText" Foreground="White" FontWeight="Bold" FontSize="14"
+                       HorizontalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center" />
+        </Border>
+    </Grid>
+    </Grid>
+</Window>

@@ -1,0 +1,38 @@
+{
+  "manifest_version": 3,
+  "name": "Profile Refresher Helper",
+  "version": "1.1.0",
+  "description": "Developed by Jeymeyzer. XYZ Chatter (Team Mel). Runs the status steps when Profile Refresher asks; talks only to the app on localhost.",
+  "author": "Jeymeyzer · XYZ Chatter (Team Mel)",
+  "permissions": [
+    "scripting",
+    "tabs"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "commands": {
+    "run-job": {
+      "suggested_key": {
+        "default": "Alt+Shift+H"
+      },
+      "description": "Run the job from Profile Refresher"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://sniffies.com/*",
+        "https://*.sniffies.com/*"
+      ],
+      "js": [
+        "mapzoom.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}

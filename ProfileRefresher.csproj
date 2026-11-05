@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>ProfileRefresher</AssemblyName>
+    <RootNamespace>ProfileRefresher</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Version>1.0.0</Version>
+    <Product>Browser Profile Refresher</Product>
+    <Authors>Jeymeyzer</Authors>
+    <Company>XYZ Chatter (Team Mel)</Company>
+    <Copyright>© 2026 Jeymeyzer. XYZ Chatter (Team Mel). All rights reserved.</Copyright>
+    <Description>Developed by Jeymeyzer. XYZ Chatter (Team Mel)</Description>
+    <AssemblyTitle>Browser Profile Refresher · Developed by Jeymeyzer</AssemblyTitle>
+
+    <!-- Keep the footprint small: workstation, non-concurrent GC; no server GC threads. -->
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
+    <TieredPGO>true</TieredPGO>
+
+    <!-- Fluent (Windows 11) theme API is marked experimental in some WPF versions. -->
+    <NoWarn>$(NoWarn);WPF0001</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Used once per "Detect" to read browser process command lines (custom user-data dirs). -->
+    <PackageReference Include="System.Management" Version="10.0.0" />
+  </ItemGroup>
+
+</Project>
