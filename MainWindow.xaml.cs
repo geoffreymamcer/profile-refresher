@@ -171,6 +171,28 @@ public partial class MainWindow : Window
         return $"{text}   ({loops - hosting} refresh, {hosting} I'm hosting)";
     }
 
+    // ---------- Layout ----------
+
+    private void MainGrid_SizeChanged(object sender, SizeChangedEventArgs e) => FitOptions();
+
+    /// <summary>
+    /// Caps the Options box so it never pushes the buttons and log off the window:
+    /// whatever doesn't fit scrolls inside the box instead.
+    /// </summary>
+    private void FitOptions()
+    {
+        const int profilesRow = 2, optionsRow = 3;
+        const double profilesMin = 110 + 10;   // profiles list MinHeight + its bottom margin
+        const double optionsChrome = 12 + 30;  // Options box bottom margin + header and border
+
+        double others = 0;
+        for (int i = 0; i < MainGrid.RowDefinitions.Count; i++)
+            if (i != profilesRow && i != optionsRow) others += MainGrid.RowDefinitions[i].ActualHeight;
+
+        double room = MainGrid.ActualHeight - others - profilesMin - optionsChrome;
+        OptionsScroll.MaxHeight = Math.Max(120, room);
+    }
+
     // ---------- Message list (Chat & reply) ----------
 
     private void RenumberReplies()

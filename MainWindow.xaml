@@ -27,7 +27,7 @@
         </Rectangle.Fill>
     </Rectangle>
 
-    <Grid Margin="16">
+    <Grid x:Name="MainGrid" Margin="16" SizeChanged="MainGrid_SizeChanged">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
@@ -89,6 +89,10 @@
 
         <!-- Options -->
         <GroupBox x:Name="OptionsBox" Grid.Row="3" Header="Options" Margin="0,0,0,12">
+            <!-- Scrolls when the options are taller than the window allows (MaxHeight is set in code),
+                 so the buttons and log below always stay visible. -->
+            <ScrollViewer x:Name="OptionsScroll" VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled">
             <StackPanel Margin="6">
 
                 <!-- Combined task -->
@@ -152,9 +156,7 @@
 
                     <TextBlock Grid.Row="0" Text="Messages to send (in order)" Margin="0,6" VerticalAlignment="Top"
                                TextWrapping="Wrap" />
-                    <ScrollViewer Grid.Row="0" Grid.Column="1" MaxHeight="170" VerticalScrollBarVisibility="Auto"
-                                  HorizontalScrollBarVisibility="Disabled">
-                        <ItemsControl x:Name="ReplyList">
+                        <ItemsControl x:Name="ReplyList" Grid.Row="0" Grid.Column="1">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
                                     <DockPanel Margin="0,2">
@@ -167,7 +169,6 @@
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
-                    </ScrollViewer>
 
                     <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Margin="0,4,0,6">
                         <Button Content="+ Add message" Padding="10,3" Click="AddMessage_Click" />
@@ -289,6 +290,7 @@
                     </StackPanel>
                 </Grid>
             </StackPanel>
+            </ScrollViewer>
         </GroupBox>
 
         <!-- Controls -->
