@@ -670,6 +670,13 @@ public partial class MainWindow : Window
         if (!data.ClosedList) summary += ", WARNING: chat list may still be open";
         if (!outcome.Ok && data.Errors.Count == 0) summary += $" ({outcome.Message})";
 
+        if (replies is not null && data.Chats.Count > 0 && data.Chats.All(c => c.Reply is null))
+        {
+            // The old (read-only) chats.js never attaches a reply result.
+            lines.Insert(0, "!! The extension in this profile is out of date (it can only read, not reply). " +
+                            "Copy the new chats.js into the extension folder, then reload the extension in this profile.");
+            summary += ", NOT REPLYING: extension out of date";
+        }
         if (replies is not null)
         {
             int sent = data.Chats.Count(c => c.Reply?.Status == "sent");
