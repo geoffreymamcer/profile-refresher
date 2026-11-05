@@ -6,7 +6,7 @@
 //   [data-testid="settingsMyProfileLink"]       "Your Cruiser Profile"
 //   [data-testid="chatYourProfileButton"]       "Go To Edit Profile"
 //   row containing "cruising status" → [role=button]   status field (shows current status)
-//   mbsc-wheel-item                             status options (scroll wheel)
+//   ui-wheel [role=option] (.ui-wheel__item)    status options (scroll wheel, in .bottom-flyout-content)
 //   [data-testid="rightActionButton"] "Done"    confirm picker
 //   [data-testid="save-profile-button"]         Save
 //   [role=button][aria-label="Go Back"]         leave edit screen
@@ -69,8 +69,12 @@ export async function runSteps(job) {
     return candidates.length === 1 ? candidates[0] : null;
   };
 
-  // Mobiscroll renders options as <mbsc-wheel-item> (Angular) or div.mbsc-scroller-wheel-item (React/JS).
-  const wheelItems = () => all("mbsc-wheel-item, .mbsc-scroller-wheel-item");
+  // The site's own wheel: <ui-wheel> with div.ui-wheel__item[role=option] (aria-selected="true" = current).
+  // Older Mobiscroll markup kept as a fallback.
+  const WHEEL_ITEMS = 'ui-wheel [role="option"], .ui-wheel__item, mbsc-wheel-item, .mbsc-scroller-wheel-item';
+  const wheelItems = () => all(WHEEL_ITEMS);
+  // The element that takes arrow keys: the wheel's listbox viewport.
+  const wheelViewport = () => all('[data-testid="wheelViewport"], ui-wheel [role="listbox"]')[0] || null;
 
   // Short description of an element, for error messages.
   const describe = (el) => {
@@ -99,8 +103,8 @@ export async function runSteps(job) {
       for (let i = 0; i < 30; i++) {
         const cur = selectedItem() || wheelItems()[0];
         if (!cur) return false;
-        cur.focus();
-        const el = document.activeElement || cur;
+        const el = wheelViewport() || cur;
+        el.focus();
         for (const type of ["keydown", "keyup"]) {
           el.dispatchEvent(new KeyboardEvent(type, { key, code: key, keyCode: code, which: code, bubbles: true, cancelable: true }));
         }
@@ -151,7 +155,7 @@ export async function runSteps(job) {
     }
 
     if (!opened()) {
-      const popup = all('[class*="mbsc-popup"], [class*="mbsc-scroller"], [role="dialog"]')[0];
+      const popup = all('.bottom-flyout-content, ui-wheel, [class*="mbsc-popup"], [class*="mbsc-scroller"], [role="dialog"]')[0];
       pickerWhy = popup
         ? `a popup opened (${describe(popup)}) but no wheel items matched; the option markup has changed`
         : `clicked ${describe(cell)} but no picker appeared; wrong element, or the click was ignored`;
