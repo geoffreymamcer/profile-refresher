@@ -106,7 +106,7 @@ public sealed class RefreshRunner
             // Keep doing chat passes while they still find new chats (replies can bring new messages).
             for (int round = 1; ; round++)
             {
-                bool found = await RunPassAsync(s, s.ChatStep, $"Cycle {cycle} · chats {round}", ct);
+                bool found = await RunPassAsync(s, s.ChatStep, $"Cycle {cycle} · chats {round}", ct, quickWhenIdle: true);
                 nextHosting = await HostingIfDueAsync(s, nextHosting, ct);
                 if (!found) break;
                 Log?.Invoke("New chats were read in this pass; checking all profiles again.");
@@ -131,8 +131,13 @@ public sealed class RefreshRunner
         return next;
     }
 
+    /// <summary>Wait after a chat check that found nothing to do (instead of the full delay).</summary>
+    private static readonly TimeSpan IdleDelay = TimeSpan.FromSeconds(1);
+
     /// <summary>One pass through every profile. Returns true if any profile reported work done.</summary>
-    private async Task<bool> RunPassAsync(ContinuousSettings s, LoopStep step, string label, CancellationToken ct)
+    /// <param name="quickWhenIdle">Use a short wait after a profile that had nothing to do (e.g. no new messages).</param>
+    private async Task<bool> RunPassAsync(ContinuousSettings s, LoopStep step, string label, CancellationToken ct,
+        bool quickWhenIdle = false)
     {
         bool any = false;
         int count = s.Profiles.Count;
@@ -142,9 +147,17 @@ public sealed class RefreshRunner
             var outcome = await RunOneAsync(s.Profiles[i], step, position, label, ct);
             any |= outcome.DidWork;
 
-            var wait = s.Delay;
-            if (s.Jitter > TimeSpan.Zero)
-                wait += TimeSpan.FromMilliseconds(Random.Shared.NextDouble() * s.Jitter.TotalMilliseconds);
+            TimeSpan wait;
+            if (quickWhenIdle && !outcome.DidWork)
+            {
+                wait = s.Delay < IdleDelay ? s.Delay : IdleDelay;
+            }
+            else
+            {
+                wait = s.Delay;
+                if (s.Jitter > TimeSpan.Zero)
+                    wait += TimeSpan.FromMilliseconds(Random.Shared.NextDouble() * s.Jitter.TotalMilliseconds);
+            }
             await DelayAsync(wait, position, ct);
         }
         return any;
