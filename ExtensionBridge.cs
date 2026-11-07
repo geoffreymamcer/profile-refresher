@@ -20,7 +20,11 @@ public sealed record ExtensionJob(
     int MaxChats = 25,
     string[]? ReplyMessages = null,
     bool DryRun = false,
-    int SendDelayMs = 2000);
+    int SendDelayMs = 2000,
+    SendToRequest? SendTo = null);
+
+/// <summary>Open this person's chat and send these items (a reply typed in Telegram).</summary>
+public sealed record SendToRequest(string UserId, SendItem[] Items);
 
 public sealed record JobResult(string? Id, bool Ok, string? Step, string? Message, JsonElement? Data);
 

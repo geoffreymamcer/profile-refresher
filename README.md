@@ -151,6 +151,17 @@ Nothing is hosted on this PC; the app sends the message to Telegram over the int
 3. Click **Get chat ID** in the app; it fills in your chat ID.
 4. Tick **Telegram: notify my phone…**, click **Send test**, and check your phone.
 
+**Replying from your phone.** While the Chat & reply task is running, reply to a notification in
+Telegram (swipe it, or long-press → Reply) and type a message or send a photo (a caption is sent after
+the photo). The bot answers "⏳ Sending…", and after the profile the app is working on it opens that
+person's chat on the right profile, sends it, and answers "✅ Sent" or "❌ Not sent: reason". You can
+reply several times, and you can also reply to the ✅ message. Only messages from your chat ID are
+accepted. Messages sent while the app wasn't running are ignored (the bot tells you). Dry run applies
+here too.
+
+Photos are put into the site's photo upload (the **+** button) without opening a file dialog. If the
+site's photo flow needs a step the app doesn't know, the bot says why it wasn't sent.
+
 Untick **Include their message text** to send only the profile name and who replied. The token is
 stored encrypted for your Windows user. If a notification can't be sent (no internet, wrong token),
 the log says so and the run carries on.

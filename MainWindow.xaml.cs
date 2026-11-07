@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Globalization;
@@ -196,16 +197,20 @@ public partial class MainWindow : Window
         _notifier.Add(profile.DisplayName, who, alert, () => OpenProfileWindow(profile));
 
         if (TelegramCheck.IsChecked == true)
-            _ = NotifyPhoneAsync(TelegramNotifier.FormatReply(profile.DisplayName, who, alert,
-                TelegramIncludeTextCheck.IsChecked == true));
+        {
+            string html = TelegramNotifier.FormatReply(profile.DisplayName, who, alert, TelegramIncludeTextCheck.IsChecked == true) +
+                          "\n\n<i>Reply to this message to answer them.</i>";
+            _ = NotifyPhoneAsync(html, new ReplyTarget(profile.Key, profile.DisplayName, alert.UserId, who));
+        }
     }
 
     /// <summary>Sends a Telegram message; a failure is logged and never stops the run.</summary>
-    private async Task NotifyPhoneAsync(string html)
+    private async Task NotifyPhoneAsync(string html, ReplyTarget? target = null)
     {
         string token = TelegramTokenBox.Password.Trim(), chatId = TelegramChatIdBox.Text.Trim();
-        string? error = await TelegramNotifier.SendAsync(token, chatId, html);
+        var (id, error) = await TelegramNotifier.SendWithIdAsync(token, chatId, html);
         if (error is not null) AddLog($"Phone notification failed: {error}");
+        else if (id is { } m && target is not null) TelegramThreads.Remember(m, target); // replying to it answers them
     }
 
     private async void TelegramGetChatId_Click(object sender, RoutedEventArgs e)
@@ -533,8 +538,65 @@ public partial class MainWindow : Window
         {
             if (continuous)
             {
+                // Replies typed in Telegram: received in the background, sent after the current profile.
+                var phoneReplies = new ConcurrentQueue<ManualReply>();
+                TelegramReplyListener? listener = null;
+                string tgToken = TelegramTokenBox.Password.Trim(), tgChat = TelegramChatIdBox.Text.Trim();
+                if (TelegramCheck.IsChecked == true && tgToken.Length > 0 && tgChat.Length > 0)
+                {
+                    listener = new TelegramReplyListener(tgToken, tgChat);
+                    listener.Received += m => phoneReplies.Enqueue(m);
+                    listener.Log += msg => Dispatcher.BeginInvoke(() => AddLog(msg));
+                    _ = listener.RunAsync(_cts.Token);
+                }
+
+                var scanner = _scanner!;
+                async Task SendPhoneRepliesAsync(CancellationToken ct)
+                {
+                    while (listener is not null && phoneReplies.TryDequeue(out var m))
+                    {
+                        string who = $"<b>{TelegramNotifier.Escape(m.Target.UserName)}</b> ({TelegramNotifier.Escape(m.Target.ProfileName)})";
+                        string html;
+                        var profile = _profiles.FirstOrDefault(p => p.Key == m.Target.ProfileKey);
+                        if (profile is null)
+                        {
+                            html = $"❌ Not sent to {who}: that Chrome profile isn't detected in the app.";
+                            AddLog($"[Phone reply] {m.Target.ProfileName} → {m.Target.UserName}: profile not detected, not sent.");
+                        }
+                        else
+                        {
+                            StatusText.Text = $"Sending your reply from Telegram to {m.Target.UserName} on {profile.DisplayName}…";
+                            var windows = await Task.Run(() => scanner.Scan(readCommandLines: false).Windows
+                                .Where(w => w.ProfileKey == profile.Key).ToList(), CancellationToken.None);
+
+                            JobOutcome? outcome = null;
+                            if (windows.Count > 0)
+                            {
+                                var job = new ExtensionJob(Guid.NewGuid().ToString("N"), "readChats", tabMatch, stepMs,
+                                    DryRun: dryRun, SendDelayMs: sendDelayMs,
+                                    SendTo: new SendToRequest(m.Target.UserId, m.Items.ToArray()));
+                                outcome = await activeBridge!.RunJobAsync(job, TriggerFor(windows[0].Hwnd), ct,
+                                    TimeSpan.FromMinutes(3), profile.Key);
+                                var data = ConversationStore.ParseReadChats(outcome.Data);
+                                if (data is not null)
+                                    foreach (var chat in data.Chats) ConversationStore.Merge(profile, chat);
+                            }
+
+                            bool ok = outcome?.Ok == true;
+                            string why = outcome is null ? "its Chrome window isn't open" : outcome.Message;
+                            html = !ok ? $"❌ Not sent to {who}: {TelegramNotifier.Escape(why)}"
+                                 : dryRun ? $"🧪 Dry run: typed for {who}, not sent. Untick Dry run in the app to send."
+                                 : $"✅ Sent {m.Describe()} to {who}.";
+                            AddLog($"[Phone reply] {profile.DisplayName} → {m.Target.UserName}: " +
+                                   (ok ? (dryRun ? "dry run, not sent" : $"sent {m.Describe()}") : "FAILED: " + why));
+                        }
+                        await listener.ConfirmAsync(m, html, CancellationToken.None);
+                    }
+                }
+
                 await _runner.RunContinuousAsync(new ContinuousSettings
                 {
+                    AfterEachProfile = SendPhoneRepliesAsync,
                     Profiles = selected,
                     ChatStep = readStep!,
                     RefreshStep = refreshStep!,

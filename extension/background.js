@@ -99,7 +99,7 @@ async function doReadChats(tab, job) {
   if (!dot.hasButton) {
     return { ok: false, step: "Check messages", message: "Messages button not found (page not loaded or black screen?)" };
   }
-  if (!dot.hasDot && !dot.listOpen) {
+  if (!job.sendTo && !dot.hasDot && !dot.listOpen) {
     return { ok: true, step: "Check messages", message: "no new messages", data: { hadDot: false, chats: [] } };
   }
 

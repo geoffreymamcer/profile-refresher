@@ -19,31 +19,47 @@ public static class TelegramNotifier
 
     /// <summary>Sends an HTML-formatted message. Returns null on success, otherwise what went wrong.</summary>
     public static async Task<string?> SendAsync(string token, string chatId, string html, CancellationToken ct = default)
-    {
-        if (string.IsNullOrWhiteSpace(token)) return "no bot token";
-        if (string.IsNullOrWhiteSpace(chatId)) return "no chat ID";
+        => (await SendWithIdAsync(token, chatId, html, null, ct)).Error;
 
-        var body = JsonSerializer.Serialize(new
+    /// <summary>Sends an HTML-formatted message, optionally as a reply. Returns the new message's ID, or what went wrong.</summary>
+    public static async Task<(long? MessageId, string? Error)> SendWithIdAsync(string token, string chatId, string html,
+        long? replyTo = null, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(token)) return (null, "no bot token");
+        if (string.IsNullOrWhiteSpace(chatId)) return (null, "no chat ID");
+
+        var payload = new Dictionary<string, object>
         {
-            chat_id = chatId.Trim(),
-            text = html,
-            parse_mode = "HTML",
-            disable_web_page_preview = true,
-        });
+            ["chat_id"] = chatId.Trim(),
+            ["text"] = html,
+            ["parse_mode"] = "HTML",
+            ["disable_web_page_preview"] = true,
+        };
+        if (replyTo is { } r) payload["reply_parameters"] = new { message_id = r, allow_sending_without_reply = true };
+
         try
         {
             using var res = await Http.PostAsync($"{ApiBase}/bot{token.Trim()}/sendMessage",
-                new StringContent(body, Encoding.UTF8, "application/json"), ct);
-            if (res.IsSuccessStatusCode) return null;
-            return Describe(res.StatusCode, await res.Content.ReadAsStringAsync(ct));
+                new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json"), ct);
+            string json = await res.Content.ReadAsStringAsync(ct);
+            if (!res.IsSuccessStatusCode) return (null, Describe(res.StatusCode, json));
+
+            long? id = null;
+            try
+            {
+                using var doc = JsonDocument.Parse(json);
+                id = doc.RootElement.GetProperty("result").GetProperty("message_id").GetInt64();
+            }
+            catch { }
+            return (id, null);
         }
         catch (TaskCanceledException) when (!ct.IsCancellationRequested)
         {
-            return "Telegram did not answer in time (internet down?)";
+            return (null, "Telegram did not answer in time (internet down?)");
         }
         catch (HttpRequestException ex)
         {
-            return "could not reach Telegram: " + ex.Message;
+            return (null, "could not reach Telegram: " + ex.Message);
         }
     }
 
@@ -101,7 +117,7 @@ public static class TelegramNotifier
 
     public static string Escape(string s) => WebUtility.HtmlEncode(s);
 
-    private static string Describe(HttpStatusCode code, string json)
+    internal static string Describe(HttpStatusCode code, string json)
     {
         string? desc = null;
         try

@@ -68,6 +68,8 @@ export async function readChats(job) {
   const replies = (job.replyMessages || []).map((s) => String(s)).filter((s) => s.trim().length > 0);
   const dryRun = !!job.dryRun;
   const sendDelay = Math.max(0, job.sendDelayMs ?? 2000);
+  // Manual reply from the phone: { userId, items: [{ type: "text", text } | { type: "photo", data, name, mime }] }.
+  const sendTo = job.sendTo && job.sendTo.userId ? job.sendTo : null;
   const maxChats = Math.max(1, job.maxChats || 25);
   const result = { hadDot: false, chats: [], skippedAds: 0, skippedReview: [], errors: [], closedList: false };
   let step = "Start";
@@ -211,6 +213,56 @@ export async function readChats(job) {
     return { status: "failed", index, text, reason: "message did not send (still in the message box)" };
   };
 
+  // ---- photos ----
+  const photoButton = () => all('[aria-label="Select a Photo From Your Device"]')[0] || null;
+  const fileInputs = () => Array.from(document.querySelectorAll('input[type="file"]'))
+    .filter((i) => !i.disabled && (!i.accept || /image|\*/i.test(i.accept)));
+  const isPhotoEl = (el) => el.classList.contains("photo") || el.classList.contains("chat-photo-message") ||
+    !!el.closest("chat-photo-message") || !!el.querySelector("img");
+
+  /** Puts the photo into the site's photo input (no file dialog), then sends it. */
+  const sendPhoto = async (item) => {
+    const text = "[photo]";
+    if (dryRun) return { status: "dry_run", text };
+
+    let input = fileInputs()[0];
+    if (!input) {
+      // The input may only exist after pressing "+". A script click can't open the file dialog.
+      const plus = photoButton();
+      if (!plus) return { status: "failed", text, reason: "photo button (+) not found" };
+      click(plus);
+      input = await waitFor(() => fileInputs()[0], 3000);
+      if (!input) return { status: "failed", text, reason: "photo upload box not found after pressing +; the site's photo flow is different" };
+    }
+
+    let file;
+    try {
+      const bin = atob(item.data || "");
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      file = new File([bytes], item.name || "photo.jpg", { type: item.mime || "image/jpeg" });
+    } catch {
+      return { status: "failed", text, reason: "photo data is damaged" };
+    }
+
+    const before = new Set(msgEls().map((el) => el.id));
+    const newPhoto = () => msgEls().find((el) => !before.has(el.id) && isOurs(el) && isPhotoEl(el));
+
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    input.files = dt.files;
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+
+    // Some sites send right away; others show a preview that still needs Send.
+    if (await waitFor(newPhoto, 2500)) return { status: "sent", text };
+    await sleep(sendDelay);
+    const btn = sendButton();
+    if (btn) click(btn);
+    if (await waitFor(newPhoto, Math.max(T, 15000))) return { status: "sent", text };
+    return { status: "failed", text, reason: "the photo did not appear in the chat (it may still be uploading, or the site needs another step)" };
+  };
+
   /**
    * Sends the next message of the sequence in the open chat. Returns what happened.
    * The second-to-last message is followed straight away by the last one (no waiting for a reply).
@@ -237,6 +289,66 @@ export async function readChats(job) {
       r2.reason += ` (#${first} was ${r.status === "dry_run" ? "typed" : "sent"})`;
     }
     return { ...r2, fromIndex: first };
+  };
+
+  /** Manual reply: open this person's chat from Recents and send the items. Fills result.sent / result.errors. */
+  const sendToChat = async () => {
+    const want = String(sendTo.userId).toLowerCase();
+    result.sent = [];
+
+    step = "Find chat";
+    const findRow = () => all("chat-list-vertical-item").find((r) => !isAd(r) && rowKey(r) === want) || null;
+    let row = findRow();
+    for (let i = 0; i < 10 && !row; i++) {
+      // Scroll the list down to load older chats.
+      const any = all("chat-list-vertical-item")[0];
+      let box = any ? any.parentElement : null;
+      while (box && box !== document.body && box.scrollHeight <= box.clientHeight + 5) box = box.parentElement;
+      if (!box || box === document.body) break;
+      const top = box.scrollTop;
+      box.scrollTop = top + box.clientHeight;
+      box.dispatchEvent(new Event("scroll", { bubbles: true }));
+      await sleep(900);
+      row = findRow();
+      if (!row && box.scrollTop === top) break; // end of the list
+    }
+    if (!row) {
+      result.errors.push({ userId: want, step, message: "this person's chat is not in the Recents list" });
+      return;
+    }
+
+    const target = row.querySelector("td.conversation-content-container") ||
+      row.querySelector('[aria-label="Select Chat"]') || row;
+    if (isAd(row) || isAd(target)) {
+      result.errors.push({ userId: want, step, message: "refusing to open an ad row" });
+      return;
+    }
+
+    step = "Open chat";
+    click(target);
+    if (!(await waitFor(chatOpen))) {
+      result.errors.push({ userId: want, step, message: "chat did not open" });
+      if (!listVisible()) await backToList();
+      return;
+    }
+    await sleep(500);
+
+    step = "Send";
+    for (const item of sendTo.items || []) {
+      const r = item.type === "photo" ? await sendPhoto(item) : await sendOne(String(item.text || ""), null);
+      result.sent.push({ type: item.type === "photo" ? "photo" : "text", status: r.status, reason: r.reason || null });
+      if (r.status === "failed") {
+        result.errors.push({ userId: want, step, message: r.reason });
+        break;
+      }
+      await sleep(600);
+    }
+
+    await sleep(800);
+    result.chats.push(readOpenChat(row.id)); // saved to the chat log
+
+    step = "Back to chat list";
+    if (!(await backToList())) result.errors.push({ userId: want, step, message: "could not get back to the chat list" });
   };
 
   /** Back, Back → chat list (as on the site). */
@@ -271,17 +383,29 @@ export async function readChats(job) {
     }
     await sleep(800); // let the rows render
 
+    let turnedOnUnread = false;
+    let turnedOffUnread = false;
+    if (sendTo) {
+      // The person may already be read, so the Unread filter must be off to find them.
+      step = "Turn off Unread filter";
+      if (unreadChip() && chipOn()) {
+        click(unreadChip());
+        turnedOffUnread = !!(await waitFor(() => !chipOn(), 3000));
+        await sleep(800);
+      }
+      await sendToChat();
+    }
+
     // Show unread chats only, so read ones are never opened. Put the filter back afterwards.
     step = "Turn on Unread filter";
-    let turnedOnUnread = false;
-    if (unreadChip() && !chipOn()) {
+    if (!sendTo && unreadChip() && !chipOn()) {
       click(unreadChip());
       turnedOnUnread = !!(await waitFor(chipOn, 3000));
       await sleep(800);
     }
 
     const attempted = new Set();
-    for (let n = 0; n < maxChats; n++) {
+    for (let n = 0; n < (sendTo ? 0 : maxChats); n++) {
       step = "Find unread chat";
       const unread = all("chat-list-vertical-item").filter((r) => !isAd(r) && isUnread(r));
       const fresh = unread.filter((r) => !attempted.has(rowKey(r)));
@@ -345,6 +469,12 @@ export async function readChats(job) {
       await waitFor(() => !chipOn(), 3000);
       await sleep(300);
     }
+    if (turnedOffUnread && unreadChip() && !chipOn()) {
+      step = "Restore Unread filter";
+      click(unreadChip());
+      await waitFor(chipOn, 3000);
+      await sleep(300);
+    }
 
     step = "Close chat list";
     const b = chatButton();
@@ -359,6 +489,15 @@ export async function readChats(job) {
     }
 
     const ok = result.errors.length === 0;
+    if (sendTo) {
+      const sent = (result.sent || []).filter((x) => x.status === "sent" || x.status === "dry_run").length;
+      return {
+        ok,
+        step: ok ? "Finished" : result.errors[0].step,
+        message: ok ? `sent ${sent} message(s)` : result.errors[0].message,
+        data: result,
+      };
+    }
     return {
       ok,
       step: ok ? "Finished" : result.errors[0].step,

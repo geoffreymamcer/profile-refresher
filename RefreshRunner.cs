@@ -45,6 +45,9 @@ public sealed class ContinuousSettings
     public Func<BrowserProfile, DotState>? DotState { get; init; }
     /// <summary>Wait once at the start so the live reports can arrive.</summary>
     public TimeSpan StartupWait { get; init; } = TimeSpan.Zero;
+
+    /// <summary>Runs after every profile, before the delay (used to send replies typed in Telegram).</summary>
+    public Func<CancellationToken, Task>? AfterEachProfile { get; init; }
 }
 
 /// <summary>Pause gate: awaiting it completes immediately unless paused.</summary>
@@ -129,14 +132,15 @@ public sealed class RefreshRunner
                 var targets = ChatTargets(s);
                 bool found = targets.Count > 0 &&
                              await RunPassAsync(targets, s.ChatStep, $"Cycle {cycle} · chats {round}", s.ChatDelay,
-                                 TimeSpan.Zero, ct);
+                                 TimeSpan.Zero, ct, s.AfterEachProfile);
                 nextHosting = await HostingIfDueAsync(s, nextHosting, ct);
                 if (!found) break;
                 Log?.Invoke("New chats were read in this pass; checking again.");
             }
 
             Log?.Invoke("No new chats on any profile: refresh pass.");
-            await RunPassAsync(s.Profiles, s.RefreshStep, $"Cycle {cycle} · refresh", s.RefreshDelay, TimeSpan.Zero, ct);
+            await RunPassAsync(s.Profiles, s.RefreshStep, $"Cycle {cycle} · refresh", s.RefreshDelay, TimeSpan.Zero, ct,
+                s.AfterEachProfile);
             nextHosting = await HostingIfDueAsync(s, nextHosting, ct);
         }
     }
@@ -191,7 +195,7 @@ public sealed class RefreshRunner
 
         var started = DateTimeOffset.Now;
         Log?.Invoke($"I'm hosting is due (was due {due:HH:mm}).");
-        await RunPassAsync(s.Profiles, s.HostingStep, "I'm hosting", s.Delay, s.Jitter, ct);
+        await RunPassAsync(s.Profiles, s.HostingStep, "I'm hosting", s.Delay, s.Jitter, ct, s.AfterEachProfile);
         var next = started + s.HostingEvery;
         Log?.Invoke($"Next I'm hosting pass at about {next:HH:mm}.");
         return next;
@@ -199,7 +203,7 @@ public sealed class RefreshRunner
 
     /// <summary>One pass through the given profiles. Returns true if any profile reported work done.</summary>
     private async Task<bool> RunPassAsync(IReadOnlyList<BrowserProfile> profiles, LoopStep step, string label,
-        TimeSpan delay, TimeSpan jitter, CancellationToken ct)
+        TimeSpan delay, TimeSpan jitter, CancellationToken ct, Func<CancellationToken, Task>? afterEach = null)
     {
         bool any = false;
         int count = profiles.Count;
@@ -208,6 +212,7 @@ public sealed class RefreshRunner
             string position = $"{label} · Profile {i + 1}/{count}";
             var outcome = await RunOneAsync(profiles[i], step, position, label, ct);
             any |= outcome.DidWork;
+            if (afterEach is not null) await afterEach(ct);
 
             var wait = delay;
             if (jitter > TimeSpan.Zero)
