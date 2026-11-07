@@ -73,6 +73,10 @@ public partial class MainWindow : Window
         SendDelayBox.Text = _settings.SendDelaySeconds.ToString(CultureInfo.CurrentCulture);
         ChatDelayBox.Text = _settings.ChatDelaySeconds.ToString(CultureInfo.CurrentCulture);
         RefreshDelayBox.Text = _settings.RefreshDelaySeconds.ToString(CultureInfo.CurrentCulture);
+        TelegramCheck.IsChecked = _settings.TelegramEnabled;
+        TelegramTokenBox.Password = TelegramNotifier.Unprotect(_settings.TelegramBotTokenProtected);
+        TelegramChatIdBox.Text = _settings.TelegramChatId;
+        TelegramIncludeTextCheck.IsChecked = _settings.TelegramIncludeText;
         DryRunCheck.IsChecked = _settings.ReplyDryRun;
 
         AddLog("Browser Profile Refresher · " + Credits.Text);
@@ -190,6 +194,60 @@ public partial class MainWindow : Window
 
         _notifier ??= new ReplyNotifier();
         _notifier.Add(profile.DisplayName, who, alert, () => OpenProfileWindow(profile));
+
+        if (TelegramCheck.IsChecked == true)
+            _ = NotifyPhoneAsync(TelegramNotifier.FormatReply(profile.DisplayName, who, alert,
+                TelegramIncludeTextCheck.IsChecked == true));
+    }
+
+    /// <summary>Sends a Telegram message; a failure is logged and never stops the run.</summary>
+    private async Task NotifyPhoneAsync(string html)
+    {
+        string token = TelegramTokenBox.Password.Trim(), chatId = TelegramChatIdBox.Text.Trim();
+        string? error = await TelegramNotifier.SendAsync(token, chatId, html);
+        if (error is not null) AddLog($"Phone notification failed: {error}");
+    }
+
+    private async void TelegramGetChatId_Click(object sender, RoutedEventArgs e)
+    {
+        var btn = (Button)sender;
+        btn.IsEnabled = false;
+        try
+        {
+            var (id, name, error) = await TelegramNotifier.FindChatIdAsync(TelegramTokenBox.Password);
+            if (error is not null)
+            {
+                MessageBox.Show(this, "Couldn't get the chat ID: " + error, Title, MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+            TelegramChatIdBox.Text = id!;
+            AddLog($"Telegram chat ID set ({name ?? "unknown name"}: {id}).");
+            SaveSettings();
+        }
+        finally { btn.IsEnabled = true; }
+    }
+
+    private async void TelegramTest_Click(object sender, RoutedEventArgs e)
+    {
+        var btn = (Button)sender;
+        btn.IsEnabled = false;
+        try
+        {
+            var sample = new ReplyAlert("test", "Test user", "This is a test notification.", DateTimeOffset.Now);
+            string html = "🧪 <i>Test from Profile Refresher</i>\n\n" +
+                          TelegramNotifier.FormatReply("Example profile", "Test user", sample, TelegramIncludeTextCheck.IsChecked == true);
+            string? error = await TelegramNotifier.SendAsync(TelegramTokenBox.Password, TelegramChatIdBox.Text, html);
+            if (error is null)
+            {
+                AddLog("Telegram test sent: check your phone.");
+                SaveSettings();
+            }
+            else
+            {
+                MessageBox.Show(this, "Test failed: " + error, Title, MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+        finally { btn.IsEnabled = true; }
     }
 
     /// <summary>Brings the profile's browser window to the front (from a notification's Open button).</summary>
@@ -816,6 +874,10 @@ public partial class MainWindow : Window
         if (TryParseDouble(SendDelayBox.Text, out var sd)) _settings.SendDelaySeconds = sd;
         if (TryParseDouble(ChatDelayBox.Text, out var cd)) _settings.ChatDelaySeconds = cd;
         if (TryParseDouble(RefreshDelayBox.Text, out var rfd)) _settings.RefreshDelaySeconds = rfd;
+        _settings.TelegramEnabled = TelegramCheck.IsChecked == true;
+        _settings.TelegramBotTokenProtected = TelegramNotifier.Protect(TelegramTokenBox.Password.Trim());
+        _settings.TelegramChatId = TelegramChatIdBox.Text.Trim();
+        _settings.TelegramIncludeText = TelegramIncludeTextCheck.IsChecked == true;
 
         _settings.Save();
     }

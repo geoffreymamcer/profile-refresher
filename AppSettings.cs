@@ -38,6 +38,13 @@ public sealed class AppSettings
     public double ChatDelaySeconds { get; set; } = 0.5;
     public double RefreshDelaySeconds { get; set; } = 5;
 
+    // Phone notifications (Telegram)
+    public bool TelegramEnabled { get; set; }
+    /// <summary>Bot token, encrypted for the current Windows user.</summary>
+    public string TelegramBotTokenProtected { get; set; } = "";
+    public string TelegramChatId { get; set; } = "";
+    public bool TelegramIncludeText { get; set; } = true;
+
     private static string FilePath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ProfileRefresher", "settings.json");
 

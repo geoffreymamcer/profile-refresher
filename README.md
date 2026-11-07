@@ -142,6 +142,19 @@ sequence and they write again, a small window opens in the bottom-right corner (
 the **Chrome profile**, who replied and their message. **Open profile** brings that profile's window
 to the front; entries stay until you dismiss them. The log shows the same with `!! NEW REPLY`.
 
+**Phone notifications (Telegram).** The same reply alert can go to your phone through a Telegram bot.
+Nothing is hosted on this PC; the app sends the message to Telegram over the internet.
+
+1. In Telegram, open **@BotFather**, send `/newbot`, pick a name and a username ending in `bot`.
+   It replies with a **token** like `123456789:AA...`. Paste it into **Bot token**.
+2. Open your new bot in Telegram and press **Start** (or send it any message).
+3. Click **Get chat ID** in the app; it fills in your chat ID.
+4. Tick **Telegram: notify my phone…**, click **Send test**, and check your phone.
+
+Untick **Include their message text** to send only the profile name and who replied. The token is
+stored encrypted for your Windows user. If a notification can't be sent (no internet, wrong token),
+the log says so and the run carries on.
+
 **Dry run** (on by default): types each message, waits, then clears it without pressing Send. Use it
 with **Test 1 profile** (one chat pass on the first ticked profile) to watch it work, then untick it.
 

@@ -153,6 +153,7 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
                     <TextBlock Grid.Row="0" Text="Messages to send (in order)" Margin="0,6" VerticalAlignment="Top"
@@ -207,6 +208,38 @@
 
                     <CheckBox x:Name="DryRunCheck" Grid.Row="6" Grid.Column="1" Margin="0,4,0,2"
                               Content="Dry run: type each message but don't press Send" />
+
+                    <!-- Phone notifications -->
+                    <TextBlock Grid.Row="7" Text="Phone notifications" Margin="0,12,0,6" VerticalAlignment="Top" />
+                    <StackPanel Grid.Row="7" Grid.Column="1" Margin="0,10,0,0">
+                        <CheckBox x:Name="TelegramCheck" Margin="0,0,0,6"
+                                  Content="Telegram: notify my phone when someone replies after my last message" />
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="70" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <TextBlock Text="Bot token" VerticalAlignment="Center" Margin="0,3" />
+                            <PasswordBox x:Name="TelegramTokenBox" Grid.Column="1" Grid.ColumnSpan="2" Margin="0,3"
+                                         VerticalContentAlignment="Center" ToolTip="From @BotFather in Telegram" />
+                            <TextBlock Grid.Row="1" Text="Chat ID" VerticalAlignment="Center" Margin="0,3" />
+                            <TextBox x:Name="TelegramChatIdBox" Grid.Row="1" Grid.Column="1" Margin="0,3"
+                                     VerticalContentAlignment="Center" />
+                            <Button Grid.Row="1" Grid.Column="2" Content="Get chat ID" Padding="10,2" Margin="6,3,0,3"
+                                    Click="TelegramGetChatId_Click"
+                                    ToolTip="Send your bot any message in Telegram first, then click this" />
+                        </Grid>
+                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                            <CheckBox x:Name="TelegramIncludeTextCheck" VerticalAlignment="Center"
+                                      Content="Include their message text" />
+                            <Button Content="Send test" Padding="10,2" Margin="12,0,0,0" Click="TelegramTest_Click" />
+                        </StackPanel>
+                    </StackPanel>
                 </Grid>
 
                 <!-- Read chats task -->
