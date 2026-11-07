@@ -87,10 +87,14 @@ public sealed class TelegramReplyListener
     private readonly string _token;
     private readonly string _chatId;
 
-    public TelegramReplyListener(string token, string chatId)
+    private readonly Func<ReplyTarget, Conversation?> _loadConversation;
+
+    /// <param name="loadConversation">Finds the saved conversation for a person (for "Full conversation").</param>
+    public TelegramReplyListener(string token, string chatId, Func<ReplyTarget, Conversation?> loadConversation)
     {
         _token = token.Trim();
         _chatId = chatId.Trim();
+        _loadConversation = loadConversation;
     }
 
     /// <summary>A reply to send. Raised on a background thread.</summary>
@@ -114,7 +118,7 @@ public sealed class TelegramReplyListener
             {
                 int wait = skippedBacklog ? 25 : 0;
                 using var res = await Http.GetAsync(
-                    $"{Api}/getUpdates?offset={offset}&timeout={wait}&allowed_updates=%5B%22message%22%5D", ct);
+                    $"{Api}/getUpdates?offset={offset}&timeout={wait}&allowed_updates=%5B%22message%22%2C%22callback_query%22%5D", ct);
                 string json = await res.Content.ReadAsStringAsync(ct);
                 if (!res.IsSuccessStatusCode)
                 {
@@ -144,6 +148,16 @@ public sealed class TelegramReplyListener
                 foreach (var update in doc.RootElement.GetProperty("result").EnumerateArray())
                 {
                     offset = Math.Max(offset, update.GetProperty("update_id").GetInt64() + 1);
+
+                    if (update.TryGetProperty("callback_query", out var cb))
+                    {
+                        if (!skippedBacklog) continue;
+                        try { await HandleButtonAsync(cb, ct); }
+                        catch (OperationCanceledException) when (ct.IsCancellationRequested) { return; }
+                        catch (Exception ex) { Log?.Invoke("Telegram replies: " + ex.Message); }
+                        continue;
+                    }
+
                     if (!update.TryGetProperty("message", out var msg)) continue;
                     if (!FromOwner(msg)) continue;
 
@@ -173,18 +187,30 @@ public sealed class TelegramReplyListener
         string? text = msg.TryGetProperty("text", out var t) ? t.GetString() : null;
         string? caption = msg.TryGetProperty("caption", out var c) ? c.GetString() : null;
 
+        ReplyTarget? repliedTo = msg.TryGetProperty("reply_to_message", out var rt)
+            ? TelegramThreads.Find(rt.GetProperty("message_id").GetInt64())
+            : null;
+
+        // "/history" (or "history") as a reply: show the whole conversation.
+        if (repliedTo is not null && text is not null &&
+            text.Trim().TrimStart('/').Equals("history", StringComparison.OrdinalIgnoreCase))
+        {
+            await SendHistoryAsync(repliedTo, messageId, ct);
+            return;
+        }
+
         if (text is not null && text.StartsWith('/'))
         {
             await SayAsync("👋 When someone replies after your last message, I'll notify you here.\n\n" +
                            "To answer them, <b>reply</b> to that notification (swipe it, or long-press → Reply) and " +
-                           "type your message or send a photo. It goes out after the profile the app is working on.",
+                           "type your message or send a photo. It goes out after the profile the app is working on.\n\n" +
+                           "To see the whole conversation first, tap <b>📜 Full conversation</b> under a notification " +
+                           "(or reply to it with /history).",
                 messageId, ct);
             return;
         }
 
-        ReplyTarget? target = null;
-        if (msg.TryGetProperty("reply_to_message", out var replyTo))
-            target = TelegramThreads.Find(replyTo.GetProperty("message_id").GetInt64());
+        ReplyTarget? target = repliedTo;
         if (target is null)
         {
             await SayAsync("↩️ Reply to a notification (swipe it, or long-press → Reply) so I know who it's for.", messageId, ct);
@@ -242,6 +268,51 @@ public sealed class TelegramReplyListener
                        $"({TelegramNotifier.Escape(target.ProfileName)}) after the current profile…", messageId, ct, target);
     }
 
+    /// <summary>The "📜 Full conversation" button under a notification.</summary>
+    private async Task HandleButtonAsync(JsonElement cb, CancellationToken ct)
+    {
+        string callbackId = cb.GetProperty("id").GetString() ?? "";
+        bool fromOwner = cb.TryGetProperty("from", out var from) && from.TryGetProperty("id", out var fid) &&
+                         fid.GetRawText() == _chatId;
+        if (!fromOwner || !cb.TryGetProperty("message", out var msg) || !FromOwner(msg)) return;
+
+        // Stop the button's loading spinner.
+        try
+        {
+            using var _ = await Http.PostAsync($"{Api}/answerCallbackQuery",
+                new StringContent(JsonSerializer.Serialize(new { callback_query_id = callbackId }),
+                    System.Text.Encoding.UTF8, "application/json"), ct);
+        }
+        catch (HttpRequestException) { }
+
+        if (!(cb.TryGetProperty("data", out var data) && data.GetString() == TelegramNotifier.HistoryCallback)) return;
+
+        long messageId = msg.GetProperty("message_id").GetInt64();
+        var target = TelegramThreads.Find(messageId);
+        if (target is null)
+        {
+            await SayAsync("❌ I don't know which chat this notification was for anymore.", messageId, ct);
+            return;
+        }
+        await SendHistoryAsync(target, messageId, ct);
+    }
+
+    private async Task SendHistoryAsync(ReplyTarget target, long replyTo, CancellationToken ct)
+    {
+        Conversation? conv = null;
+        try { conv = _loadConversation(target); } catch { }
+        if (conv is null)
+        {
+            await SayAsync($"❌ No saved conversation with {TelegramNotifier.Escape(target.UserName)} " +
+                           $"({TelegramNotifier.Escape(target.ProfileName)}).", replyTo, ct);
+            return;
+        }
+
+        var chunks = TelegramNotifier.FormatConversation(conv, target.UserName);
+        chunks[^1] += $"\n\n<i>Chrome profile: {TelegramNotifier.Escape(target.ProfileName)} · reply to this to answer.</i>";
+        foreach (var chunk in chunks) await SayAsync(chunk, replyTo, ct, target); // each one can be replied to
+    }
+
     private async Task<(byte[]? Data, string? Error)> DownloadAsync(string fileId, CancellationToken ct)
     {
         try
@@ -264,11 +335,12 @@ public sealed class TelegramReplyListener
 
     /// <summary>Tells you how a reply went, as a reply to your message. You can reply to that answer too.</summary>
     public Task ConfirmAsync(ManualReply reply, string html, CancellationToken ct = default) =>
-        SayAsync(html, reply.TelegramMessageId, ct, reply.Target);
+        SayAsync(html, reply.TelegramMessageId, ct, reply.Target, historyButton: true);
 
-    private async Task SayAsync(string html, long? replyTo, CancellationToken ct, ReplyTarget? target = null)
+    private async Task SayAsync(string html, long? replyTo, CancellationToken ct, ReplyTarget? target = null,
+        bool historyButton = false)
     {
-        var (id, error) = await TelegramNotifier.SendWithIdAsync(_token, _chatId, html, replyTo, ct);
+        var (id, error) = await TelegramNotifier.SendWithIdAsync(_token, _chatId, html, replyTo, ct, historyButton);
         if (error is not null) Log?.Invoke("Telegram: " + error);
         else if (id is { } m && target is not null) TelegramThreads.Remember(m, target);
     }

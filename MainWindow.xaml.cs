@@ -198,17 +198,33 @@ public partial class MainWindow : Window
 
         if (TelegramCheck.IsChecked == true)
         {
-            string html = TelegramNotifier.FormatReply(profile.DisplayName, who, alert, TelegramIncludeTextCheck.IsChecked == true) +
-                          "\n\n<i>Reply to this message to answer them.</i>";
+            bool includeText = TelegramIncludeTextCheck.IsChecked == true;
+            string html = TelegramNotifier.FormatReply(profile.DisplayName, who, alert, includeText);
+
+            // A preview of the conversation, so you can answer without opening anything.
+            var conv = includeText ? ConversationStore.Load(profile, alert.UserId) : null;
+            if (conv is { Messages.Count: > 1 })
+                html += "\n\n" + TelegramNotifier.FormatConversation(conv, who, lastN: 8)[^1];
+
+            html += "\n\n<i>Reply to this message to answer them.</i>";
+            if (html.Length > 4000) html = TelegramNotifier.FormatReply(profile.DisplayName, who, alert, includeText) +
+                                           "\n\n<i>Reply to this message to answer them.</i>";
             _ = NotifyPhoneAsync(html, new ReplyTarget(profile.Key, profile.DisplayName, alert.UserId, who));
         }
+    }
+
+    /// <summary>The saved conversation for a Telegram "Full conversation" request (called from a background thread).</summary>
+    private Conversation? LoadConversationFor(ReplyTarget target)
+    {
+        var profile = Dispatcher.Invoke(() => _profiles.FirstOrDefault(p => p.Key == target.ProfileKey));
+        return profile is null ? null : ConversationStore.Load(profile, target.UserId);
     }
 
     /// <summary>Sends a Telegram message; a failure is logged and never stops the run.</summary>
     private async Task NotifyPhoneAsync(string html, ReplyTarget? target = null)
     {
         string token = TelegramTokenBox.Password.Trim(), chatId = TelegramChatIdBox.Text.Trim();
-        var (id, error) = await TelegramNotifier.SendWithIdAsync(token, chatId, html);
+        var (id, error) = await TelegramNotifier.SendWithIdAsync(token, chatId, html, historyButton: target is not null);
         if (error is not null) AddLog($"Phone notification failed: {error}");
         else if (id is { } m && target is not null) TelegramThreads.Remember(m, target); // replying to it answers them
     }
@@ -544,7 +560,7 @@ public partial class MainWindow : Window
                 string tgToken = TelegramTokenBox.Password.Trim(), tgChat = TelegramChatIdBox.Text.Trim();
                 if (TelegramCheck.IsChecked == true && tgToken.Length > 0 && tgChat.Length > 0)
                 {
-                    listener = new TelegramReplyListener(tgToken, tgChat);
+                    listener = new TelegramReplyListener(tgToken, tgChat, LoadConversationFor);
                     listener.Received += m => phoneReplies.Enqueue(m);
                     listener.Log += msg => Dispatcher.BeginInvoke(() => AddLog(msg));
                     _ = listener.RunAsync(_cts.Token);

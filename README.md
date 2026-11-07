@@ -159,6 +159,11 @@ reply several times, and you can also reply to the ✅ message. Only messages fr
 accepted. Messages sent while the app wasn't running are ignored (the bot tells you). Dry run applies
 here too.
 
+**Seeing the conversation first.** Notifications include the last 8 messages of the chat (when
+**Include their message text** is ticked). Tap **📜 Full conversation** under a notification, or reply
+to it with `/history`, to get the whole saved conversation; you can reply to that too. This works while
+the Chat & reply task is running.
+
 Photos are put into the site's photo upload (the **+** button) without opening a file dialog. If the
 site's photo flow needs a step the app doesn't know, the bot says why it wasn't sent.
 

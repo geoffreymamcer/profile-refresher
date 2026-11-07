@@ -23,7 +23,7 @@ public static class TelegramNotifier
 
     /// <summary>Sends an HTML-formatted message, optionally as a reply. Returns the new message's ID, or what went wrong.</summary>
     public static async Task<(long? MessageId, string? Error)> SendWithIdAsync(string token, string chatId, string html,
-        long? replyTo = null, CancellationToken ct = default)
+        long? replyTo = null, CancellationToken ct = default, bool historyButton = false)
     {
         if (string.IsNullOrWhiteSpace(token)) return (null, "no bot token");
         if (string.IsNullOrWhiteSpace(chatId)) return (null, "no chat ID");
@@ -36,6 +36,13 @@ public static class TelegramNotifier
             ["disable_web_page_preview"] = true,
         };
         if (replyTo is { } r) payload["reply_parameters"] = new { message_id = r, allow_sending_without_reply = true };
+        if (historyButton)
+        {
+            payload["reply_markup"] = new
+            {
+                inline_keyboard = new[] { new[] { new { text = "📜 Full conversation", callback_data = HistoryCallback } } },
+            };
+        }
 
         try
         {
@@ -116,6 +123,55 @@ public static class TelegramNotifier
     }
 
     public static string Escape(string s) => WebUtility.HtmlEncode(s);
+
+    /// <summary>The "Full conversation" button's data.</summary>
+    public const string HistoryCallback = "history";
+
+    /// <summary>Telegram allows 4096 characters per message; leave room for the header.</summary>
+    private const int ChunkLimit = 3800;
+
+    /// <summary>
+    /// The saved conversation as Telegram messages (split when long). <paramref name="lastN"/> = only the
+    /// last N messages (a preview); null = all of it.
+    /// </summary>
+    public static List<string> FormatConversation(Conversation conv, string theirName, int? lastN = null)
+    {
+        var msgs = conv.Messages.OrderBy(m => m.Seq).ToList();
+        var chunks = new List<string>();
+        if (msgs.Count == 0)
+        {
+            chunks.Add("💬 <i>No saved messages for this chat yet.</i>");
+            return chunks;
+        }
+
+        int total = msgs.Count;
+        if (lastN is { } n && n < total) msgs = msgs.Skip(total - n).ToList();
+        string header = msgs.Count < total
+            ? $"💬 <b>Last {msgs.Count} of {total} messages</b>"
+            : $"💬 <b>Conversation with {Escape(theirName)}</b> ({total} messages)";
+
+        var today = DateTimeOffset.Now.Date;
+        var sb = new StringBuilder(header);
+        foreach (var m in msgs)
+        {
+            string who = m.From == "us" ? "You" : theirName;
+            string when = m.Time is { } t
+                ? (t.ToLocalTime().Date == today ? t.ToLocalTime().ToString("HH:mm") : t.ToLocalTime().ToString("MMM d, HH:mm"))
+                : "";
+            string body = m.Type == "photo" ? "📷 <i>photo</i>" : Escape(m.Text ?? "");
+            if (body.Length > 1500) body = body[..1500] + "…";
+            string line = $"\n<b>{Escape(who)}</b>{(when.Length > 0 ? $" <i>{when}</i>" : "")}: {body}";
+
+            if (sb.Length + line.Length > ChunkLimit)
+            {
+                chunks.Add(sb.ToString());
+                sb.Clear().Append("💬 <i>(continued)</i>");
+            }
+            sb.Append(line);
+        }
+        chunks.Add(sb.ToString());
+        return chunks;
+    }
 
     internal static string Describe(HttpStatusCode code, string json)
     {
