@@ -71,7 +71,7 @@ export async function readChats(job) {
   // Manual reply from the phone: { userId, items: [{ type: "text", text } | { type: "photo", data, name, mime }] }.
   const sendTo = job.sendTo && job.sendTo.userId ? job.sendTo : null;
   const maxChats = Math.max(1, job.maxChats || 25);
-  const result = { hadDot: false, chats: [], skippedAds: 0, skippedReview: [], errors: [], closedList: false };
+  const result = { hadDot: false, chats: [], skippedAds: 0, skippedReview: [], errors: [], closedList: false, unreadLeft: 0 };
   let step = "Start";
 
   // ---- never touch the ad: four independent checks ----
@@ -389,7 +389,10 @@ export async function readChats(job) {
       click(recents);
       await sleep(600);
     }
-    await sleep(800); // let the rows render
+    // Wait for the rows to actually render (a fixed pause was sometimes too short on a slow load,
+    // so the pass saw an empty list and moved on to the next profile).
+    await waitFor(() => all("chat-list-vertical-item").length > 0, 5000);
+    await sleep(800);
 
     let turnedOnUnread = false;
     let turnedOffUnread = false;
@@ -410,26 +413,31 @@ export async function readChats(job) {
       click(unreadChip());
       turnedOnUnread = !!(await waitFor(chipOn, 3000));
       await sleep(800);
+      // The filtered list loads again: give it time to show the unread rows.
+      await waitFor(() => all("chat-list-vertical-item").some((r) => !isAd(r) && isUnread(r)), 4000);
     }
 
-    const attempted = new Set();
+    // Chats opened this pass, with how many times. A chat can be opened a second time when the
+    // person writes again while we are busy with other chats (it shows as unread again).
+    const opened = new Map();
+    const MAX_OPENS = 2;
+    const canOpen = (k) => (opened.get(k) || 0) < MAX_OPENS;
+    const unreadRows = () => all("chat-list-vertical-item").filter((r) => !isAd(r) && isUnread(r));
     for (let n = 0; n < (sendTo ? 0 : maxChats); n++) {
       step = "Find unread chat";
-      const unread = all("chat-list-vertical-item").filter((r) => !isAd(r) && isUnread(r));
-      const fresh = unread.filter((r) => !attempted.has(rowKey(r)));
-
-      for (const r of fresh) {
-        const k = rowKey(r);
-        if (skip.has(k)) {
-          attempted.add(k);
-          if (!result.skippedReview.includes(k)) result.skippedReview.push(k);
+      const pick = () => {
+        const unread = unreadRows();
+        for (const r of unread) {
+          const k = rowKey(r);
+          if (skip.has(k) && !result.skippedReview.includes(k)) result.skippedReview.push(k);
         }
-      }
-
-      const row = fresh.find((r) => !skip.has(rowKey(r)));
+        return unread.find((r) => !skip.has(rowKey(r)) && canOpen(rowKey(r))) || null;
+      };
+      // Don't give up on the first empty look: the list can still be updating after Back.
+      const row = pick() || (await waitFor(pick, 2500));
       if (!row) break;
       const key = rowKey(row);
-      attempted.add(key);
+      opened.set(key, (opened.get(key) || 0) + 1);
 
       const target = row.querySelector("td.conversation-content-container") ||
         row.querySelector('[aria-label="Select Chat"]') || row;
@@ -466,6 +474,10 @@ export async function readChats(job) {
       }
       await sleep(500);
     }
+
+    // Unread chats we could not get to (an error, the per-pass limit, or still loading).
+    // The app checks this profile again for these, even though the orange dot is gone by now.
+    result.unreadLeft = unreadRows().filter((r) => !skip.has(rowKey(r))).length;
 
     // Unread ads left behind (never opened).
     result.skippedAds += all("app-chat-list-ad, [data-testid=\"sniffiesChatRow\"]")

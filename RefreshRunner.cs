@@ -74,6 +74,12 @@ public sealed class RefreshRunner
 {
     private readonly BrowserScanner _scanner;
 
+    // Profiles whose last chat pass left unread chats (or failed), with how many times in a row.
+    // Their orange dot is already gone, so without this they'd wait until the next new message.
+    private readonly Dictionary<string, int> _recheck = new();
+    private const int MaxRechecks = 3;
+    private LoopStep? _chatStep;
+
     public RefreshRunner(BrowserScanner scanner) => _scanner = scanner;
 
     public PauseController Pause { get; } = new();
@@ -118,6 +124,8 @@ public sealed class RefreshRunner
     /// <summary>Runs until cancelled. See <see cref="ContinuousSettings"/>.</summary>
     public async Task RunContinuousAsync(ContinuousSettings s, CancellationToken ct)
     {
+        _chatStep = s.ChatStep;
+        _recheck.Clear();
         var nextHosting = DateTimeOffset.Now + s.HostingEvery;
         Log?.Invoke($"First I'm hosting pass at about {nextHosting:HH:mm}, then every {s.HostingEvery.TotalMinutes:0.##} min.");
 
@@ -173,7 +181,20 @@ public sealed class RefreshRunner
             }
         }
 
+        // Profiles that still had unread chats after their last pass (no dot any more).
+        var again = new List<string>();
+        foreach (var p in s.Profiles)
+        {
+            if (targets.Contains(p) || !_recheck.TryGetValue(p.Key, out int n)) continue;
+            if (n <= MaxRechecks)
+            {
+                targets.Add(p);
+                again.Add(p.DisplayName);
+            }
+        }
+
         if (withDot.Count > 0) Log?.Invoke($"Scan: new messages on {string.Join(", ", withDot)}.");
+        if (again.Count > 0) Log?.Invoke($"Checking again for unread chats left on {string.Join(", ", again)}.");
 
         string un = string.Join(", ", unreported);
         if (un != _lastUnreported)
@@ -211,7 +232,7 @@ public sealed class RefreshRunner
         {
             string position = $"{label} · Profile {i + 1}/{count}";
             var outcome = await RunOneAsync(profiles[i], step, position, label, ct);
-            any |= outcome.DidWork;
+            any |= outcome.DidWork || (outcome.RecheckChats && _recheck.GetValueOrDefault(profiles[i].Key) <= MaxRechecks);
             if (afterEach is not null) await afterEach(ct);
 
             var wait = delay;
@@ -251,6 +272,11 @@ public sealed class RefreshRunner
         }
 
         if (outcome.Ok) Succeeded++; else Failed++;
+        if (ReferenceEquals(step, _chatStep))
+        {
+            if (outcome.RecheckChats) _recheck[profile.Key] = _recheck.GetValueOrDefault(profile.Key) + 1;
+            else _recheck.Remove(profile.Key);
+        }
         Log?.Invoke($"[{logTag}] {profile.DisplayName}: {outcome.Message}");
         if (outcome.Alerts is { } alerts)
             foreach (var a in alerts) Alert?.Invoke(profile, a);

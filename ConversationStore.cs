@@ -15,6 +15,9 @@ public sealed class ReadChatsData
     public List<string> SkippedReview { get; set; } = new();
     public List<ChatError> Errors { get; set; } = new();
     public bool ClosedList { get; set; }
+
+    /// <summary>Unread chats still in the list when the pass ended (needs-review chats not counted).</summary>
+    public int UnreadLeft { get; set; }
 }
 
 public sealed class ChatData

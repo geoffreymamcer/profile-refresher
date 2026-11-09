@@ -11,6 +11,12 @@ public sealed record RefreshOutcome(bool Ok, string Message)
     /// <summary>Chat passes: true when at least one chat was opened (so another chat pass may be needed).</summary>
     public bool DidWork { get; init; }
 
+    /// <summary>
+    /// Chat passes: unread chats were left (an error, the per-pass limit, or the list was still loading).
+    /// The orange dot is gone by then, so the runner checks this profile again on its own.
+    /// </summary>
+    public bool RecheckChats { get; init; }
+
     /// <summary>Chats where someone replied after the whole message sequence was sent.</summary>
     public IReadOnlyList<ReplyAlert>? Alerts { get; init; }
 }

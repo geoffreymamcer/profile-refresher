@@ -863,7 +863,8 @@ public partial class MainWindow : Window
         var outcome = await bridge.RunJobAsync(job, triggerFor(windows[0].Hwnd), ct, TimeSpan.FromMinutes(8), profile.Key);
 
         var data = ConversationStore.ParseReadChats(outcome.Data);
-        if (data is null) return outcome.ToRefreshOutcome();
+        // A pass that failed (timed out, script error) may have left unread chats behind: check again.
+        if (data is null) return outcome.ToRefreshOutcome() with { RecheckChats = !outcome.Ok };
         if (outcome.Ok && !data.HadDot && data.Chats.Count == 0) return new RefreshOutcome(true, "no new messages");
 
         var lines = new List<string>();
@@ -891,6 +892,7 @@ public partial class MainWindow : Window
         if (data.SkippedReview.Count > 0) summary += $", {data.SkippedReview.Count} needs-review chat(s) skipped";
         if (data.SkippedAds > 0) summary += ", ad skipped";
         if (!data.ClosedList) summary += ", WARNING: chat list may still be open";
+        if (data.UnreadLeft > 0) summary += $", {data.UnreadLeft} unread chat(s) left: will check this profile again";
         if (!outcome.Ok && data.Errors.Count == 0) summary += $" ({outcome.Message})";
 
         if (replies is not null && data.Chats.Count > 0 && data.Chats.All(c => c.Reply is null))
@@ -922,6 +924,7 @@ public partial class MainWindow : Window
         return new RefreshOutcome(outcome.Ok, message)
         {
             DidWork = data.Chats.Count > 0,
+            RecheckChats = data.UnreadLeft > 0 || !outcome.Ok,
             Alerts = alerts.Count > 0 ? alerts : null,
         };
     }
