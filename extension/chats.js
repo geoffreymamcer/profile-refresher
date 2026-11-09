@@ -184,6 +184,10 @@ export async function readChats(job) {
 
     setText(ta, text);
     await sleep(sendDelay);
+    // The site may have replaced the box while we waited: our text would then be in a detached copy.
+    if (!ta.isConnected || textArea() !== ta) {
+      return { status: "failed", index, text, reason: "the chat reloaded while typing; message not sent" };
+    }
     if (ta.value !== text) return { status: "failed", index, text, reason: "the typed message was changed or cleared" };
 
     if (dryRun) {
@@ -204,9 +208,10 @@ export async function readChats(job) {
       msgEls().find((el) => !before.has(el.id) && isOurs(el) && norm(el.textContent).includes(wanted)), T);
     if (confirmed) return { status: "sent", index, text };
 
-    // Not shown in the chat yet. An emptied box means the site took it.
+    // Not shown in the chat yet. The same box, now empty, means the site took it.
+    // (A different, empty box means the chat was redrawn and nothing was sent.)
     const box = textArea();
-    if (box && box.value.trim().length === 0) {
+    if (box === ta && box.isConnected && box.value.trim().length === 0) {
       return { status: "sent", index, text, reason: "sent, but not yet shown in the chat" };
     }
     if (box) setText(box, ""); // don't leave it behind as a draft
@@ -331,6 +336,9 @@ export async function readChats(job) {
       if (!listVisible()) await backToList();
       return;
     }
+    // Wait for the conversation to finish loading, as automatic replies do. The site redraws the
+    // chat (and its message box) when it loads; typing before that lands in a box that gets thrown away.
+    await loadFullHistory();
     await sleep(500);
 
     step = "Send";
