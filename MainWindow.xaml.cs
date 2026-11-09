@@ -213,6 +213,46 @@ public partial class MainWindow : Window
         }
     }
 
+    // ---------- "Lost your internet connection, or we're working on an update" banner ----------
+
+    // When the banner appeared, per profile (null key = extension not linked to a profile yet).
+    private readonly Dictionary<string, DateTimeOffset> _offlineSince = new();
+    // Last Telegram alert per profile, so a banner that flickers on and off doesn't flood your phone.
+    private readonly Dictionary<string, DateTimeOffset> _offlineAlerted = new();
+    private static readonly TimeSpan OfflineAlertCooldown = TimeSpan.FromMinutes(3);
+
+    private void OnSiteOfflineChanged(string? profileKey, bool offline)
+    {
+        string id = profileKey ?? "?";
+        var profile = profileKey is null ? null : _profiles.FirstOrDefault(p => p.Key == profileKey);
+        string name = profile?.DisplayName ?? "a profile the app hasn't linked yet (run one job in it first)";
+        var now = DateTimeOffset.Now;
+
+        if (offline)
+        {
+            if (_offlineSince.ContainsKey(id)) return; // another tab of the same profile
+            _offlineSince[id] = now;
+            AddLog($"!! SITE SAYS NO INTERNET / UPDATE · Chrome profile: {name}");
+
+            if (_offlineAlerted.TryGetValue(id, out var last) && now - last < OfflineAlertCooldown) return;
+            _offlineAlerted[id] = now;
+            if (TelegramCheck.IsChecked == true)
+                _ = NotifyPhoneAsync("⚠️ <b>Site shows “lost your internet connection, or we're working on an update”</b>\n" +
+                                     $"Chrome profile: <b>{TelegramNotifier.Escape(name)}</b> · {now:HH:mm}");
+        }
+        else
+        {
+            if (!_offlineSince.Remove(id, out var since)) return;
+            var took = now - since;
+            string dur = took.TotalMinutes >= 1 ? $"{(int)took.TotalMinutes} min {took.Seconds} s" : $"{took.Seconds} s";
+            AddLog($"Site is back to normal · Chrome profile: {name} (after {dur})");
+
+            // Only follow up if we actually alerted for this outage.
+            if (TelegramCheck.IsChecked == true && _offlineAlerted.TryGetValue(id, out var alerted) && alerted >= since)
+                _ = NotifyPhoneAsync($"✅ Back to normal: <b>{TelegramNotifier.Escape(name)}</b> (after {dur})");
+        }
+    }
+
     /// <summary>The saved conversation for a Telegram "Full conversation" request (called from a background thread).</summary>
     private Conversation? LoadConversationFor(ReplyTarget target)
     {
@@ -435,6 +475,8 @@ public partial class MainWindow : Window
         if (wantsExtension)
         {
             bridge = new ExtensionBridge();
+            _offlineSince.Clear(); // a fresh run starts with no known outages
+            bridge.OfflineChanged += (key, offline) => Dispatcher.BeginInvoke(() => OnSiteOfflineChanged(key, offline));
             try
             {
                 bridge.Start();

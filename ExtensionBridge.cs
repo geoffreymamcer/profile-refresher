@@ -38,7 +38,7 @@ public enum DotState
 }
 
 /// <summary>A live report from dotwatch.js, relayed by the extension.</summary>
-public sealed record DotReport(string? Client, int TabId, bool HasButton, bool HasDot);
+public sealed record DotReport(string? Client, int TabId, bool HasButton, bool HasDot, bool Offline = false);
 
 /// <summary>Outcome of a job, including any data the extension sent back.</summary>
 public sealed record JobOutcome(bool Ok, string Message, JsonElement? Data)
@@ -71,6 +71,13 @@ public sealed class ExtensionBridge : IDisposable
     private readonly Dictionary<string, string> _clients = LoadClients();
     // Latest dot report per (client, tab).
     private readonly Dictionary<(string Client, int TabId), (DotReport Report, DateTimeOffset At)> _reports = new();
+
+    /// <summary>
+    /// The site's "lost your internet connection, or we're working on an update" banner appeared (true) or went
+    /// away (false) in a site tab. The profile key is null if this copy of the extension hasn't run a job yet.
+    /// Raised on a background thread.
+    /// </summary>
+    public event Action<string?, bool>? OfflineChanged;
 
     private static string ClientsPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ProfileRefresher", "extension-clients.json");
@@ -215,11 +222,17 @@ public sealed class ExtensionBridge : IDisposable
 
             if (report is { Client: { Length: > 0 and <= 100 } c })
             {
+                bool changed;
+                string? profileKey;
                 lock (_lock)
                 {
+                    bool wasOffline = _reports.TryGetValue((c, report.TabId), out var prev) && prev.Report.Offline;
+                    changed = wasOffline != report.Offline;
+                    profileKey = _clients.TryGetValue(c, out var k) ? k : null;
                     if (_reports.Count > 500) _reports.Clear(); // never grows without bound
                     _reports[(c, report.TabId)] = (report, DateTimeOffset.Now);
                 }
+                if (changed) OfflineChanged?.Invoke(profileKey, report.Offline);
             }
             res.StatusCode = 204;
             return;

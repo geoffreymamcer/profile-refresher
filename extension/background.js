@@ -37,6 +37,7 @@ async function reportDot(tab, msg) {
         tabId: tab.id,
         hasButton: !!msg.hasButton,
         hasDot: !!msg.hasDot,
+        offline: !!msg.offline,
       }),
     });
   } catch {

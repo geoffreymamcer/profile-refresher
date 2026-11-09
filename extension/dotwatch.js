@@ -1,4 +1,4 @@
-// Live "new messages" report for the autopilot.
+// Live "new messages" (and "lost connection / update" banner) report for the autopilot.
 // Developed by Jeymeyzer. XYZ Chatter (Team Mel)
 //
 // Runs by itself in the site's tab and tells the extension whether the orange dot is on the
@@ -15,11 +15,19 @@
   let pending = null;
   let dead = false;
 
+  // The site's "You've either lost your internet connection, or we're working on an update." banner.
+  const OFFLINE_TEXT = /lost your internet connection|working on an update/i;
+  const visible = (el) => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== "hidden";
+  const offlineShown = () =>
+    Array.from(document.getElementsByTagName("p")) // the banner is a <p>; checking only these keeps it cheap
+      .some((el) => el.childElementCount === 0 && OFFLINE_TEXT.test(el.textContent || "") && visible(el));
+
   const read = () => {
     const btn = document.querySelector('[data-testid="chatButtonIcon"]');
     return {
       hasButton: !!btn,
       hasDot: !!(btn && btn.querySelector('[data-testid="chatListNewMsgDot"]')),
+      offline: offlineShown(),
     };
   };
 
