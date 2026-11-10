@@ -7,6 +7,8 @@ on: [push, workflow_dispatch]
 jobs:
   build:
     runs-on: windows-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -48,3 +50,12 @@ jobs:
             publish/screenshots
             publish/install.log
           if-no-files-found: ignore
+      - name: TEMP publish screenshots to a branch
+        if: always()
+        shell: bash
+        run: |
+          cd publish/screenshots
+          git init -q -b ci-screenshots
+          git config user.name ci && git config user.email ci@example.invalid
+          git add . && git commit -q -m screenshots
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" ci-screenshots
