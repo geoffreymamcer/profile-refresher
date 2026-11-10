@@ -48,7 +48,8 @@ public partial class MainWindow : Window
         ReplyList.ItemsSource = _replies;
 
         BrowserCombo.SelectedIndex = Math.Clamp(_settings.BrowserIndex, 0, 1);
-        TaskCombo.SelectedIndex = Math.Clamp(_settings.TaskIndex, 0, 4);
+        // Tasks 2 (combined) and 3 (read only) are hidden for now: a saved choice of either falls back to Refresh.
+        TaskCombo.SelectedIndex = _settings.TaskIndex is 1 or 4 ? _settings.TaskIndex : 0;
         EveryBox.Text = _settings.RefreshesBeforeHosting.ToString(CultureInfo.CurrentCulture);
         OrderCombo.SelectedIndex = _settings.OrderMode switch { "opened" => 1, "name" => 2, _ => 0 };
 
@@ -163,7 +164,7 @@ public partial class MainWindow : Window
             1 => "Sets the status in each ticked profile so the site posts I'm hosting. Needs the helper extension.",
             2 => "Refresh passes with an I'm hosting pass in between. Needs the helper extension.",
             3 => "Opens unread chats and saves them. Nothing is sent. Needs the helper extension.",
-            4 => "Replies to unread chats, refreshes tabs and posts I'm hosting. Runs until you press Terminate.",
+            4 => "Replies to unread chats, refreshes tabs and posts I'm hosting, all on its own. Runs until you press Terminate.",
             _ => "",
         };
         ReadPanel.Visibility = Show(IsReadTask || IsChatTask);

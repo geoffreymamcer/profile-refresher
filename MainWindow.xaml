@@ -120,9 +120,10 @@
                               VerticalAlignment="Center">
                         <ComboBoxItem Content="Refresh one tab" />
                         <ComboBoxItem Content="Post I'm hosting in the global chat" />
-                        <ComboBoxItem Content="Refresh + I'm hosting combined" />
-                        <ComboBoxItem Content="Check &amp; read new chats (no replies)" />
-                        <ComboBoxItem Content="Chat &amp; reply + refresh + I'm hosting" />
+                        <!-- Hidden for now (kept so the task numbers used in code and saved settings stay the same) -->
+                        <ComboBoxItem Content="Refresh + I'm hosting combined" Visibility="Collapsed" IsEnabled="False" />
+                        <ComboBoxItem Content="Check &amp; read new chats (no replies)" Visibility="Collapsed" IsEnabled="False" />
+                        <ComboBoxItem Content="Autopilot mode" />
                     </ComboBox>
                 </Grid>
                 <!-- One-line explanation of the selected task (set in code) -->

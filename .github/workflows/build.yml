@@ -1,5 +1,7 @@
-# Optional: push this folder to a GitHub repo and the .exe is built for you
-# (Actions tab → latest run → Artifacts → ProfileRefresher).
+# Every push builds the app and its installer, then tests the installer on a clean Windows machine.
+# Download from: Actions tab → latest run → Artifacts.
+#   ProfileRefresher-Setup : the installer (brings its own .NET; nothing else to install)
+#   ProfileRefresher       : the bare .exe (needs the .NET 10 Desktop Runtime)
 name: build
 on: [push, workflow_dispatch]
 jobs:
@@ -10,8 +12,39 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
-      - run: dotnet publish ProfileRefresher.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -p:DebugType=none -o publish
+
+      - name: Build the single .exe
+        run: dotnet publish ProfileRefresher.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -p:DebugType=none -o publish
+
+      - name: Build the self-contained app for the installer
+        run: dotnet publish ProfileRefresher.csproj -c Release -r win-x64 --self-contained true -p:DebugType=none -o publish/app
+
+      - name: Build the installer
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (!(Test-Path $iscc)) { choco install innosetup --no-progress -y; if ($LASTEXITCODE) { exit 1 } }
+          $v = (Select-Xml -Path ProfileRefresher.csproj -XPath '//Version').Node.InnerText
+          & $iscc "/DAppVersion=$v" installer\ProfileRefresher.iss
+          if ($LASTEXITCODE) { exit 1 }
+
+      - name: Test the installer (install, start, check, uninstall)
+        shell: powershell
+        run: .\installer\smoke-test.ps1
+
       - uses: actions/upload-artifact@v4
         with:
           name: ProfileRefresher
           path: publish/ProfileRefresher.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ProfileRefresher-Setup
+          path: publish/ProfileRefresher-Setup.exe
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-screenshots
+          path: |
+            publish/screenshots
+            publish/install.log
+          if-no-files-found: ignore
