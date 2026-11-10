@@ -71,7 +71,7 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" MinHeight="150" />
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="230" MinHeight="130" />
+            <RowDefinition Height="200" MinHeight="130" />
         </Grid.RowDefinitions>
 
         <!-- ===== Header: name, credit, run state ===== -->
@@ -120,9 +120,10 @@
                               VerticalAlignment="Center">
                         <ComboBoxItem Content="Refresh one tab" />
                         <ComboBoxItem Content="Post I'm hosting in the global chat" />
-                        <ComboBoxItem Content="Refresh + I'm hosting combined" />
-                        <ComboBoxItem Content="Check &amp; read new chats (no replies)" />
-                        <ComboBoxItem Content="Chat &amp; reply + refresh + I'm hosting" />
+                        <!-- Hidden for now (kept so the task numbers used in code and saved settings stay the same) -->
+                        <ComboBoxItem Content="Refresh + I'm hosting combined" Visibility="Collapsed" IsEnabled="False" />
+                        <ComboBoxItem Content="Check &amp; read new chats (no replies)" Visibility="Collapsed" IsEnabled="False" />
+                        <ComboBoxItem Content="Autopilot mode" />
                     </ComboBox>
                 </Grid>
                 <!-- One-line explanation of the selected task (set in code) -->
@@ -153,14 +154,14 @@
                     </DockPanel>
                     <TextBlock DockPanel.Dock="Top" Style="{StaticResource Hint}" Margin="0,8,0,10"
                                Text="Tick the open profiles to include." />
-                    <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
-                        <TextBlock Text="Run order" Style="{StaticResource Label}" Margin="0,0,10,0" />
-                        <ComboBox x:Name="OrderCombo" HorizontalAlignment="Stretch" VerticalAlignment="Center">
+                    <StackPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+                        <TextBlock Text="Run order" Style="{StaticResource Hint}" Margin="0,0,0,4" />
+                        <ComboBox x:Name="OrderCombo" HorizontalAlignment="Stretch">
                             <ComboBoxItem Content="By taskbar position (left to right)" />
                             <ComboBoxItem Content="By time opened (earliest first)" />
                             <ComboBoxItem Content="By profile name" />
                         </ComboBox>
-                    </DockPanel>
+                    </StackPanel>
                     <Grid>
                         <ListBox x:Name="ProfileList" Background="Transparent" BorderThickness="0"
                                  HorizontalContentAlignment="Stretch"

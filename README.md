@@ -3,18 +3,41 @@
 **Developed by Jeymeyzer. XYZ Chatter (Team Mel)**
 
 A small WPF (.NET 10) utility that works through your open Chrome or Edge profiles one at a time.
-It has two tasks:
+It has three tasks:
 
 - **Refresh one tab** refreshes one tab in each profile.
 - **Post I'm hosting in the global chat** opens *Your Cruiser Profile → Edit*, sets the cruising
   status, clicks Done, clicks Save and closes the profile. Saving makes the site post the
   "I'm hosting" message. This task needs the helper extension (see below).
+- **Autopilot mode** replies to unread chats with your own messages and keeps the refresh and
+  I'm hosting passes going until you press Terminate. It can alert your phone on Telegram.
 
-## Build
+## Install
+
+Download **ProfileRefresher-Setup.exe** (GitHub → Actions → latest run → Artifacts → ProfileRefresher-Setup)
+and run it. It installs for your Windows user only, so it never asks for administrator rights, and it
+brings its own .NET: there is nothing else to install. You get a Start Menu shortcut (and a desktop one
+if you leave that ticked) and an entry under Windows Settings → Apps to uninstall it.
+
+To update, run the newer Setup over the old one. Your settings and chat logs are kept (they live in
+`%AppData%\ProfileRefresher` and `Documents\ProfileRefresher`), also when you uninstall.
+
+The helper extension is installed next to the app; the Start Menu shortcut
+**Browser Profile Refresher extension folder** opens it. Windows can't add an extension to Chrome or Edge
+for you, so load it once in each profile (see the one-time setup below). After an update, click the
+reload button on the extension's card in `chrome://extensions` and reload the site tab.
+
+**"Windows protected your PC".** The installer is not signed with a paid certificate, so SmartScreen may
+show this the first time. Click **More info → Run anyway**.
+
+## Build it yourself
 
 1. Install the **.NET 10 SDK** (x64): https://dotnet.microsoft.com/download/dotnet/10.0
 2. Double-click `build.bat`.
 3. Run `publish\ProfileRefresher.exe`.
+
+The installer is built by GitHub Actions on every push (`installer/ProfileRefresher.iss`, Inno Setup), and
+tested there: it is installed on a clean Windows machine, the app is started and checked, then uninstalled.
 
 ## One-time setup for "Post I'm hosting": the helper extension
 
@@ -57,7 +80,9 @@ skips the picker and still clicks Save.
 
 **Don't use the mouse or keyboard during the run.** The app needs to bring each window to the front.
 
-## Use "Refresh + I'm hosting combined"
+## "Refresh + I'm hosting combined" (hidden for now)
+
+This task is not in the **What to do** list at the moment; Autopilot mode covers it.
 
 Mixes both tasks in one run. Set **Refresh passes, then** to how many refresh passes come before each
 I'm hosting pass. With `5` the order is:
@@ -71,7 +96,10 @@ number of passes, counting both kinds, so 12 gives 10 refresh passes and 2 I'm h
 shows the order under the setting (R = refresh, H = I'm hosting) before you start. Both tasks' options
 apply. **Test 1 profile** runs one refresh pass, then one I'm hosting pass, on the first ticked profile.
 
-## Use "Check & read new chats (no replies)" (Stage 1)
+## "Check & read new chats (no replies)" (hidden for now)
+
+This task is not in the **What to do** list at the moment. Autopilot mode with **Dry run** ticked reads
+and saves chats the same way without sending anything.
 
 Read-only. Nothing is ever sent. For each profile, in run order:
 
@@ -96,7 +124,7 @@ When a conversation reaches **10 received and 10 sent** text messages, its file 
 
 Opening a chat marks it as read on the site, the same as when you open it yourself.
 
-## Use "Chat & reply + refresh + I'm hosting"
+## Use "Autopilot mode"
 
 Replies in unread chats with your own messages, and keeps the refresh and I'm hosting passes going.
 It runs until you press **Terminate**; the loop count is not used.
@@ -151,7 +179,7 @@ Nothing is hosted on this PC; the app sends the message to Telegram over the int
 3. Click **Get chat ID** in the app; it fills in your chat ID.
 4. Tick **Telegram: notify my phone…**, click **Send test**, and check your phone.
 
-**Replying from your phone.** While the Chat & reply task is running, reply to a notification in
+**Replying from your phone.** While Autopilot mode is running, reply to a notification in
 Telegram (swipe it, or long-press → Reply) and type a message or send a photo (a caption is sent after
 the photo). The bot answers "⏳ Sending…", and after the profile the app is working on it opens that
 person's chat on the right profile, sends it, and answers "✅ Sent" or "❌ Not sent: reason". You can
@@ -162,7 +190,7 @@ here too.
 **Seeing the conversation first.** Notifications include the last 8 messages of the chat (when
 **Include their message text** is ticked). Tap **📜 Full conversation** under a notification, or reply
 to it with `/history`, to get the whole saved conversation; you can reply to that too. This works while
-the Chat & reply task is running.
+Autopilot mode is running.
 
 Photos are put into the site's photo upload (the **+** button) without opening a file dialog. If the
 site's photo flow needs a step the app doesn't know, the bot says why it wasn't sent.
