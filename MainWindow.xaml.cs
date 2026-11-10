@@ -155,6 +155,17 @@ public partial class MainWindow : Window
         StatusPanel.Visibility = Show(IsStatusTask || IsCombinedTask || IsChatTask);
         CombinedPanel.Visibility = Show(IsCombinedTask);
         ChatPanel.Visibility = Show(IsChatTask);
+        ChatTimingPanel.Visibility = Show(IsChatTask);
+        TelegramPanel.Visibility = Show(IsChatTask);
+        TaskHint.Text = TaskCombo.SelectedIndex switch
+        {
+            0 => "Refreshes one tab in each ticked profile.",
+            1 => "Sets the status in each ticked profile so the site posts I'm hosting. Needs the helper extension.",
+            2 => "Refresh passes with an I'm hosting pass in between. Needs the helper extension.",
+            3 => "Opens unread chats and saves them. Nothing is sent. Needs the helper extension.",
+            4 => "Replies to unread chats, refreshes tabs and posts I'm hosting. Runs until you press Terminate.",
+            _ => "",
+        };
         ReadPanel.Visibility = Show(IsReadTask || IsChatTask);
         ExtensionPanel.Visibility = Show(IsStatusTask || IsCombinedTask || IsReadTask || IsChatTask);
         ReadHint.Text = IsChatTask
@@ -705,6 +716,7 @@ public partial class MainWindow : Window
         {
             _runner.Pause.Resume();
             PauseButton.Content = "Pause";
+            SetRunState("Running", "SystemFillColorSuccessBrush");
             AddLog("Resumed.");
         }
         else
@@ -712,6 +724,7 @@ public partial class MainWindow : Window
             _runner.Pause.Pause();
             PauseButton.Content = "Resume";
             StatusText.Text = "Paused. Will pause before the next profile.";
+            SetRunState("Paused", "SystemFillColorCautionBrush");
             AddLog("Paused.");
         }
     }
@@ -722,7 +735,15 @@ public partial class MainWindow : Window
         TerminateButton.IsEnabled = false;
         PauseButton.IsEnabled = false;
         StatusText.Text = "Terminating…";
+        SetRunState("Stopping", "SystemFillColorCautionBrush");
         _cts.Cancel();
+    }
+
+    /// <summary>The run-state chip in the header. The brush is a Windows theme color key.</summary>
+    private void SetRunState(string text, string brushKey)
+    {
+        RunStateText.Text = text;
+        RunDot.SetResourceReference(System.Windows.Shapes.Shape.FillProperty, brushKey);
     }
 
     private void SetRunning(bool running)
@@ -732,6 +753,8 @@ public partial class MainWindow : Window
         PauseButton.IsEnabled = running;
         TerminateButton.IsEnabled = running;
         PauseButton.Content = "Pause";
+        if (running) SetRunState("Running", "SystemFillColorSuccessBrush");
+        else SetRunState("Idle", "SystemFillColorNeutralBrush");
 
         BrowserCombo.IsEnabled = !running;
         TaskCombo.IsEnabled = !running;

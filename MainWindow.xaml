@@ -2,367 +2,536 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Browser Profile Refresher · Developed by Jeymeyzer · XYZ Chatter (Team Mel)"
-        Width="660" Height="900" MinWidth="560" MinHeight="680"
+        Width="1040" Height="800" MinWidth="860" MinHeight="620"
         WindowStartupLocation="CenterScreen"
-        FontFamily="Segoe UI" FontSize="13"
+        FontSize="14"
         Closing="Window_Closing">
 
-    <Grid>
-    <!-- Tiled background watermark (does not block clicks) -->
-    <Rectangle IsHitTestVisible="False">
-        <Rectangle.Fill>
-            <VisualBrush TileMode="Tile" Viewport="0,0,360,150" ViewportUnits="Absolute" Stretch="None">
-                <VisualBrush.Visual>
-                    <Grid Width="360" Height="150">
-                        <TextBlock Text="Developed by Jeymeyzer · XYZ Chatter (Team Mel)"
-                                   FontSize="13" FontWeight="Bold" Foreground="Gray" Opacity="0.16"
-                                   HorizontalAlignment="Center" VerticalAlignment="Center">
-                            <TextBlock.LayoutTransform>
-                                <RotateTransform Angle="-22" />
-                            </TextBlock.LayoutTransform>
-                        </TextBlock>
-                    </Grid>
-                </VisualBrush.Visual>
-            </VisualBrush>
-        </Rectangle.Fill>
-    </Rectangle>
+    <!-- Layout: header, step 1 (what to run), step 2 (profiles) beside step 3 (settings),
+         then the run bar and activity log, which always stay in view.
+         Colors come from the Windows theme (light, dark and high contrast all work). -->
+    <Window.Resources>
+        <Style x:Key="Card" TargetType="Border">
+            <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="16,14,16,16" />
+            <Setter Property="Margin" Value="0,0,0,12" />
+        </Style>
 
-    <!-- The whole window scrolls when its content is taller than the window,
-         so the buttons and the log can always be reached. -->
-    <ScrollViewer x:Name="PageScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-    <Grid x:Name="MainGrid" Margin="16">
+        <Style x:Key="CardTitle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="15" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+
+        <!-- Secondary text: explanations and units -->
+        <Style x:Key="Hint" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+            <Setter Property="FontSize" Value="12.5" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+
+        <!-- Left-hand label of a settings row -->
+        <Style x:Key="Label" TargetType="TextBlock">
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Margin" Value="0,0,12,0" />
+        </Style>
+
+        <!-- Numbered step marker -->
+        <Style x:Key="StepBadge" TargetType="Border">
+            <Setter Property="Width" Value="22" />
+            <Setter Property="Height" Value="22" />
+            <Setter Property="CornerRadius" Value="11" />
+            <Setter Property="Margin" Value="0,0,9,0" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Background" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+        </Style>
+        <Style x:Key="StepNumber" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource TextOnAccentFillColorPrimaryBrush}" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="HorizontalAlignment" Value="Center" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+
+        <Style x:Key="Divider" TargetType="Border">
+            <Setter Property="Height" Value="1" />
+            <Setter Property="Margin" Value="0,12" />
+            <Setter Property="Background" Value="{DynamicResource DividerStrokeColorDefaultBrush}" />
+        </Style>
+    </Window.Resources>
+
+    <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" MinHeight="150" />
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="140" />
-            <RowDefinition Height="Auto" />
+            <RowDefinition Height="230" MinHeight="130" />
         </Grid.RowDefinitions>
 
-        <!-- Browser selection -->
-        <DockPanel Grid.Row="0" Margin="0,0,0,8" LastChildFill="False">
-            <TextBlock Text="Browser" Width="56" VerticalAlignment="Center" FontWeight="SemiBold" />
-            <ComboBox x:Name="BrowserCombo" Width="190" VerticalAlignment="Center" />
-            <Button x:Name="DetectButton" Content="Detect profiles" Margin="10,0,0,0" Padding="14,5"
-                    Click="Detect_Click" DockPanel.Dock="Right" />
-        </DockPanel>
-
-        <!-- Task selection -->
-        <DockPanel Grid.Row="1" Margin="0,0,0,10" LastChildFill="False">
-            <TextBlock Text="Task" Width="56" VerticalAlignment="Center" FontWeight="SemiBold" />
-            <ComboBox x:Name="TaskCombo" Width="330" VerticalAlignment="Center">
-                <ComboBoxItem Content="Refresh one tab" />
-                <ComboBoxItem Content="Post I'm hosting in the global chat" />
-                <ComboBoxItem Content="Refresh + I'm hosting combined" />
-                <ComboBoxItem Content="Check &amp; read new chats (no replies)" />
-                <ComboBoxItem Content="Chat &amp; reply + refresh + I'm hosting (runs until Terminate)" />
-            </ComboBox>
-        </DockPanel>
-
-        <!-- Detected profiles -->
-        <GroupBox Grid.Row="2" Header="Open profiles (tick the ones to include)" Margin="0,0,0,10">
-            <DockPanel>
-            <DockPanel DockPanel.Dock="Top" Margin="4,4,4,6" LastChildFill="False">
-                <TextBlock Text="Run order" VerticalAlignment="Center" Margin="0,0,10,0" />
-                <ComboBox x:Name="OrderCombo" Width="280" VerticalAlignment="Center">
-                    <ComboBoxItem Content="By taskbar position (left to right)" />
-                    <ComboBoxItem Content="By time opened (earliest first)" />
-                    <ComboBoxItem Content="By profile name" />
-                </ComboBox>
-            </DockPanel>
-            <ListBox x:Name="ProfileList" BorderThickness="0" Margin="2" MinHeight="90" MaxHeight="220"
-                     ScrollViewer.HorizontalScrollBarVisibility="Disabled">
-                <ListBox.ItemTemplate>
-                    <DataTemplate>
-                        <CheckBox IsChecked="{Binding IsSelected}" Margin="0,3">
-                            <StackPanel>
-                                <TextBlock Text="{Binding Header}" FontWeight="SemiBold" />
-                                <TextBlock Text="{Binding Details}" Opacity="0.65" FontSize="11.5"
-                                           TextTrimming="CharacterEllipsis" />
-                            </StackPanel>
-                        </CheckBox>
-                    </DataTemplate>
-                </ListBox.ItemTemplate>
-            </ListBox>
-            </DockPanel>
-        </GroupBox>
-
-        <!-- Options -->
-        <GroupBox x:Name="OptionsBox" Grid.Row="3" Header="Options" Margin="0,0,0,12">
-            <StackPanel Margin="6">
-
-                <!-- Combined task -->
-                <Grid x:Name="CombinedPanel" Visibility="Collapsed" Margin="0,0,0,8">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="180" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
-                    <TextBlock Grid.Row="0" Text="Refresh passes, then" Margin="0,6" VerticalAlignment="Center" />
-                    <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Margin="0,3">
-                        <TextBox x:Name="EveryBox" Width="80" VerticalContentAlignment="Center" />
-                        <TextBlock Text="refresh passes, then 1 I'm hosting pass (repeats)" Margin="8,0,0,0"
-                                   VerticalAlignment="Center" />
-                    </StackPanel>
-                    <TextBlock x:Name="PatternText" Grid.Row="1" Grid.Column="1" Margin="0,2,0,4" Opacity="0.75"
-                               FontFamily="Cascadia Mono, Consolas" TextWrapping="Wrap" />
-                </Grid>
-
-                <!-- Refresh task -->
-                <Grid x:Name="RefreshPanel">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="180" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
-
-                    <TextBlock Grid.Row="0" Text="Tab to refresh" Margin="0,4" />
-                    <RadioButton x:Name="ActiveTabRadio" Grid.Row="0" Grid.Column="1" GroupName="Target"
-                                 Content="Active tab in the profile's front-most window" IsChecked="True" Margin="0,4" />
-                    <DockPanel Grid.Row="1" Grid.Column="1" Margin="0,2,0,6">
-                        <RadioButton x:Name="TitleTabRadio" GroupName="Target" Content="Tab whose title contains"
-                                     VerticalAlignment="Center" />
-                        <TextBox x:Name="TitleBox" Margin="8,0,0,0" MinWidth="120" VerticalContentAlignment="Center"
-                                 IsEnabled="{Binding IsChecked, ElementName=TitleTabRadio}" />
-                    </DockPanel>
-                    <CheckBox x:Name="KeyFallbackCheck" Grid.Row="2" Grid.Column="1" Margin="0,4,0,6"
-                              Content="If the reload button can't be used, focus the window and press F5" />
-                </Grid>
-
-                <!-- Chat & reply task -->
-                <Grid x:Name="ChatPanel" Visibility="Collapsed" Margin="0,0,0,8">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="180" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
-
-                    <TextBlock Grid.Row="0" Text="Messages to send (in order)" Margin="0,6" VerticalAlignment="Top"
-                               TextWrapping="Wrap" />
-                        <ItemsControl x:Name="ReplyList" Grid.Row="0" Grid.Column="1">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <DockPanel Margin="0,2">
-                                        <TextBlock Text="{Binding Label}" Width="26" VerticalAlignment="Center" />
-                                        <Button Content="✕" DockPanel.Dock="Right" Width="26" Margin="6,0,0,0"
-                                                Click="RemoveMessage_Click" ToolTip="Remove this message" />
-                                        <TextBox Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}"
-                                                 TextWrapping="Wrap" VerticalContentAlignment="Center" MinHeight="24" />
-                                    </DockPanel>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-
-                    <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Margin="0,4,0,6">
-                        <Button Content="+ Add message" Padding="10,3" Click="AddMessage_Click" />
-                        <TextBlock Text="1st reply uses message 1, the next reply in that chat uses 2, and so on."
-                                   Opacity="0.65" Margin="10,0,0,0" VerticalAlignment="Center" TextWrapping="Wrap" />
-                    </StackPanel>
-
-                    <TextBlock Grid.Row="2" Text="I'm hosting every" Margin="0,6" VerticalAlignment="Center" />
-                    <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Margin="0,3">
-                        <TextBox x:Name="HostingEveryBox" Width="80" VerticalContentAlignment="Center" />
-                        <TextBlock Text="minutes (waits for the current pass to finish)" Opacity="0.65" Margin="8,0,0,0"
-                                   VerticalAlignment="Center" />
-                    </StackPanel>
-
-                    <TextBlock Grid.Row="3" Text="Wait before sending" Margin="0,6" VerticalAlignment="Center" />
-                    <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" Margin="0,3">
-                        <TextBox x:Name="SendDelayBox" Width="80" VerticalContentAlignment="Center" />
-                        <TextBlock Text="seconds after typing each message" Opacity="0.65" Margin="8,0,0,0"
-                                   VerticalAlignment="Center" />
-                    </StackPanel>
-
-                    <TextBlock Grid.Row="4" Text="Delay after each chat check" Margin="0,6" VerticalAlignment="Center" />
-                    <StackPanel Grid.Row="4" Grid.Column="1" Orientation="Horizontal" Margin="0,3">
-                        <TextBox x:Name="ChatDelayBox" Width="80" VerticalContentAlignment="Center" />
-                        <TextBlock Text="seconds (only profiles with new messages are opened)" Opacity="0.65"
-                                   Margin="8,0,0,0" VerticalAlignment="Center" TextWrapping="Wrap" />
-                    </StackPanel>
-
-                    <TextBlock Grid.Row="5" Text="Delay after each refresh" Margin="0,6" VerticalAlignment="Center" />
-                    <StackPanel Grid.Row="5" Grid.Column="1" Orientation="Horizontal" Margin="0,3">
-                        <TextBox x:Name="RefreshDelayBox" Width="80" VerticalContentAlignment="Center" />
-                        <TextBlock Text="seconds (I'm hosting passes use the delay below)" Opacity="0.65"
-                                   Margin="8,0,0,0" VerticalAlignment="Center" TextWrapping="Wrap" />
-                    </StackPanel>
-
-                    <CheckBox x:Name="DryRunCheck" Grid.Row="6" Grid.Column="1" Margin="0,4,0,2"
-                              Content="Dry run: type each message but don't press Send" />
-
-                    <!-- Phone notifications -->
-                    <TextBlock Grid.Row="7" Text="Phone notifications" Margin="0,12,0,6" VerticalAlignment="Top" />
-                    <StackPanel Grid.Row="7" Grid.Column="1" Margin="0,10,0,0">
-                        <CheckBox x:Name="TelegramCheck" Margin="0,0,0,6"
-                                  Content="Telegram: notify my phone when someone replies after my last message" />
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="70" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                            </Grid.RowDefinitions>
-                            <TextBlock Text="Bot token" VerticalAlignment="Center" Margin="0,3" />
-                            <PasswordBox x:Name="TelegramTokenBox" Grid.Column="1" Grid.ColumnSpan="2" Margin="0,3"
-                                         VerticalContentAlignment="Center" ToolTip="From @BotFather in Telegram" />
-                            <TextBlock Grid.Row="1" Text="Chat ID" VerticalAlignment="Center" Margin="0,3" />
-                            <TextBox x:Name="TelegramChatIdBox" Grid.Row="1" Grid.Column="1" Margin="0,3"
-                                     VerticalContentAlignment="Center" />
-                            <Button Grid.Row="1" Grid.Column="2" Content="Get chat ID" Padding="10,2" Margin="6,3,0,3"
-                                    Click="TelegramGetChatId_Click"
-                                    ToolTip="Send your bot any message in Telegram first, then click this" />
-                        </Grid>
-                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-                            <CheckBox x:Name="TelegramIncludeTextCheck" VerticalAlignment="Center"
-                                      Content="Include their message text" />
-                            <Button Content="Send test" Padding="10,2" Margin="12,0,0,0" Click="TelegramTest_Click" />
-                        </StackPanel>
-                    </StackPanel>
-                </Grid>
-
-                <!-- Read chats task -->
-                <Grid x:Name="ReadPanel" Visibility="Collapsed" Margin="0,0,0,6">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="180" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="Chat logs" Margin="0,6" VerticalAlignment="Center" />
-                    <DockPanel Grid.Column="1" Margin="0,3" LastChildFill="True">
-                        <Button x:Name="OpenLogsButton" Content="Open chat logs folder" Padding="10,3"
-                                Click="OpenLogs_Click" DockPanel.Dock="Left" />
-                        <TextBlock x:Name="ReadHint" Text="Read only: opens unread chats and saves them. Nothing is sent." Opacity="0.65"
-                                   Margin="10,0,0,0" VerticalAlignment="Center" TextWrapping="Wrap" />
-                    </DockPanel>
-                </Grid>
-
-                <!-- Post I'm hosting task -->
-                <Grid x:Name="StatusPanel" Visibility="Collapsed">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="180" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
-
-                    <TextBlock Grid.Row="0" Text="Status to set" Margin="0,6" VerticalAlignment="Center" />
-                    <TextBox x:Name="StatusBox" Grid.Row="0" Grid.Column="1" Margin="0,3" VerticalContentAlignment="Center" />
-
-                    <TextBlock Grid.Row="1" Text="Status field label" Margin="0,6" VerticalAlignment="Center" />
-                    <TextBox x:Name="RowLabelBox" Grid.Row="1" Grid.Column="1" Margin="0,3" VerticalContentAlignment="Center"
-                             ToolTip="Text next to the status dropdown on the edit screen" />
-                </Grid>
-
-                <!-- Extension settings (any task that uses the helper extension) -->
-                <Grid x:Name="ExtensionPanel" Visibility="Collapsed">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="180" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
-
-                    <TextBlock Grid.Row="0" Text="Site tab (address contains)" Margin="0,6" VerticalAlignment="Center" />
-                    <TextBox x:Name="TabMatchBox" Grid.Row="0" Grid.Column="1" Margin="0,3" VerticalContentAlignment="Center"
-                             ToolTip="Part of the site's address, e.g. the domain. Leave empty to use the active tab." />
-
-                    <TextBlock Grid.Row="1" Text="Extension shortcut" Margin="0,6" VerticalAlignment="Center" />
-                    <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Margin="0,3">
-                        <TextBox x:Name="HotkeyBox" Width="120" VerticalContentAlignment="Center" />
-                        <TextBlock Text="must match chrome://extensions/shortcuts" Opacity="0.65" Margin="8,0,0,0"
-                                   VerticalAlignment="Center" />
-                    </StackPanel>
-
-                    <TextBlock Grid.Row="2" Text="Wait per step" Margin="0,6" VerticalAlignment="Center" />
-                    <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Margin="0,3">
-                        <TextBox x:Name="StepTimeoutBox" Width="80" VerticalContentAlignment="Center" />
-                        <TextBlock Text="seconds (max time to wait for each screen)" Opacity="0.65" Margin="8,0,0,0"
-                                   VerticalAlignment="Center" />
-                    </StackPanel>
-                </Grid>
-
-                <!-- Shared -->
-                <Grid Margin="0,6,0,0">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="180" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
-
-                    <TextBlock Grid.Row="0" Text="Delay after each profile" Margin="0,6" VerticalAlignment="Center" />
-                    <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Margin="0,3">
-                        <TextBox x:Name="DelayBox" Width="80" VerticalContentAlignment="Center" />
-                        <TextBlock Text="seconds" Margin="8,0,0,0" VerticalAlignment="Center" />
-                    </StackPanel>
-
-                    <TextBlock Grid.Row="1" Text="Plus random extra delay" Margin="0,6" VerticalAlignment="Center" />
-                    <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Margin="0,3">
-                        <TextBox x:Name="JitterBox" Width="80" VerticalContentAlignment="Center" />
-                        <TextBlock Text="seconds at most (0 = none)" Margin="8,0,0,0" VerticalAlignment="Center" />
-                    </StackPanel>
-
-                    <TextBlock Grid.Row="2" Text="Number of loops" Margin="0,6" VerticalAlignment="Center" />
-                    <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Margin="0,3">
-                        <TextBox x:Name="LoopsBox" Width="80" VerticalContentAlignment="Center" />
-                        <TextBlock x:Name="LoopsHint" Text="complete passes, then stop" Margin="8,0,0,0" VerticalAlignment="Center" />
-                    </StackPanel>
-                </Grid>
+        <!-- ===== Header: name, credit, run state ===== -->
+        <DockPanel Grid.Row="0" Margin="20,14,20,12">
+            <Border DockPanel.Dock="Right" VerticalAlignment="Center" Padding="12,5" CornerRadius="14"
+                    BorderThickness="1"
+                    Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                    ToolTip="Whether a task is running right now">
+                <StackPanel Orientation="Horizontal">
+                    <Ellipse x:Name="RunDot" Width="9" Height="9" VerticalAlignment="Center"
+                             Fill="{DynamicResource SystemFillColorNeutralBrush}" />
+                    <TextBlock x:Name="RunStateText" Text="Idle" Margin="8,0,0,0" FontSize="12.5"
+                               FontWeight="SemiBold" VerticalAlignment="Center" />
+                </StackPanel>
+            </Border>
+            <StackPanel>
+                <TextBlock Text="Browser Profile Refresher" FontSize="20" FontWeight="SemiBold" />
+                <!-- Credit (text is set and verified in code) -->
+                <TextBlock x:Name="CreditText" Style="{StaticResource Hint}" Margin="0,2,0,0" />
             </StackPanel>
-        </GroupBox>
+        </DockPanel>
 
-        <!-- Controls -->
-        <WrapPanel Grid.Row="4" Margin="0,0,0,10">
-            <Button x:Name="StartButton" Content="Start" Width="100" Padding="0,6" Click="Start_Click" IsDefault="True" />
-            <Button x:Name="TestButton" Content="Test 1 profile" Width="110" Padding="0,6" Margin="10,0,0,0" Click="Test_Click"
-                    ToolTip="Run once on the first ticked profile only" />
-            <Button x:Name="PauseButton" Content="Pause" Width="100" Padding="0,6" Margin="10,0,0,0" Click="Pause_Click" />
-            <Button x:Name="TerminateButton" Content="Terminate" Width="100" Padding="0,6" Margin="10,0,0,0" Click="Terminate_Click" />
-        </WrapPanel>
-
-        <TextBlock x:Name="StatusText" Grid.Row="5" Text="Ready." Margin="2,0,0,8" FontWeight="SemiBold"
-                   TextTrimming="CharacterEllipsis" />
-
-        <!-- Activity log -->
-        <ListBox x:Name="LogList" Grid.Row="6" FontFamily="Cascadia Mono, Consolas" FontSize="11.5"
-                 ScrollViewer.HorizontalScrollBarVisibility="Auto" />
-
-        <!-- Credit banner (text is set and verified in code) -->
-        <Border x:Name="CreditBanner" Grid.Row="7" Margin="0,10,0,0" Padding="12,8"
-                CornerRadius="6" Background="#1F6FEB">
-            <TextBlock x:Name="CreditText" Foreground="White" FontWeight="Bold" FontSize="14"
-                       HorizontalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center" />
+        <!-- ===== Step 1: what to run ===== -->
+        <Border Grid.Row="1" Style="{StaticResource Card}" Margin="16,0,16,12">
+            <StackPanel>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="170" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" MaxWidth="460" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,22,0">
+                        <Border Style="{StaticResource StepBadge}">
+                            <TextBlock Text="1" Style="{StaticResource StepNumber}" />
+                        </Border>
+                        <TextBlock Text="Task" Style="{StaticResource CardTitle}" />
+                    </StackPanel>
+                    <TextBlock Grid.Column="1" Text="Browser" Style="{StaticResource Label}" Margin="0,0,8,0" />
+                    <ComboBox x:Name="BrowserCombo" Grid.Column="2" HorizontalAlignment="Stretch"
+                              VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="3" Text="What to do" Style="{StaticResource Label}" Margin="20,0,8,0" />
+                    <ComboBox x:Name="TaskCombo" Grid.Column="4" HorizontalAlignment="Stretch"
+                              VerticalAlignment="Center">
+                        <ComboBoxItem Content="Refresh one tab" />
+                        <ComboBoxItem Content="Post I'm hosting in the global chat" />
+                        <ComboBoxItem Content="Refresh + I'm hosting combined" />
+                        <ComboBoxItem Content="Check &amp; read new chats (no replies)" />
+                        <ComboBoxItem Content="Chat &amp; reply + refresh + I'm hosting" />
+                    </ComboBox>
+                </Grid>
+                <!-- One-line explanation of the selected task (set in code) -->
+                <TextBlock x:Name="TaskHint" Style="{StaticResource Hint}" Margin="0,10,0,0" />
+            </StackPanel>
         </Border>
-    </Grid>
-    </ScrollViewer>
+
+        <!-- ===== Steps 2 and 3 ===== -->
+        <Grid Grid.Row="2" Margin="16,0,16,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="340" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- Step 2: profiles -->
+            <Border Style="{StaticResource Card}" Margin="0,0,12,0">
+                <DockPanel>
+                    <DockPanel DockPanel.Dock="Top">
+                        <Button x:Name="DetectButton" DockPanel.Dock="Right" Content="Detect profiles"
+                                Click="Detect_Click"
+                                ToolTip="Find the browser profiles that are open right now" />
+                        <StackPanel Orientation="Horizontal">
+                            <Border Style="{StaticResource StepBadge}">
+                                <TextBlock Text="2" Style="{StaticResource StepNumber}" />
+                            </Border>
+                            <TextBlock Text="Profiles" Style="{StaticResource CardTitle}" />
+                        </StackPanel>
+                    </DockPanel>
+                    <TextBlock DockPanel.Dock="Top" Style="{StaticResource Hint}" Margin="0,8,0,10"
+                               Text="Tick the open profiles to include." />
+                    <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+                        <TextBlock Text="Run order" Style="{StaticResource Label}" Margin="0,0,10,0" />
+                        <ComboBox x:Name="OrderCombo" HorizontalAlignment="Stretch" VerticalAlignment="Center">
+                            <ComboBoxItem Content="By taskbar position (left to right)" />
+                            <ComboBoxItem Content="By time opened (earliest first)" />
+                            <ComboBoxItem Content="By profile name" />
+                        </ComboBox>
+                    </DockPanel>
+                    <Grid>
+                        <ListBox x:Name="ProfileList" Background="Transparent" BorderThickness="0"
+                                 HorizontalContentAlignment="Stretch"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                            <ListBox.Resources>
+                                <Thickness x:Key="ListBoxItemPadding">6,3,6,5</Thickness>
+                            </ListBox.Resources>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <CheckBox IsChecked="{Binding IsSelected}" HorizontalAlignment="Stretch">
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding Header}" FontWeight="SemiBold"
+                                                       TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Text="{Binding Details}" FontSize="12"
+                                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                       TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
+                                    </CheckBox>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                        <!-- Shown only while the list is empty -->
+                        <TextBlock IsHitTestVisible="False" TextAlignment="Center" Margin="12,24,12,0"
+                                   VerticalAlignment="Top"
+                                   Text="No profiles listed yet. Open your browser profiles, then click Detect profiles.">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource Hint}">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding HasItems, ElementName=ProfileList}" Value="True">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </Grid>
+                </DockPanel>
+            </Border>
+
+            <!-- Step 3: settings for the selected task -->
+            <Grid Grid.Column="1">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <StackPanel Orientation="Horizontal" Margin="2,2,0,10">
+                    <Border Style="{StaticResource StepBadge}">
+                        <TextBlock Text="3" Style="{StaticResource StepNumber}" />
+                    </Border>
+                    <TextBlock Text="Settings" Style="{StaticResource CardTitle}" />
+                    <TextBlock Style="{StaticResource Hint}" Margin="12,1,0,0"
+                               Text="Only the settings this task uses are shown." />
+                </StackPanel>
+
+                <ScrollViewer x:Name="PageScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel x:Name="OptionsBox" Margin="0,0,10,0">
+
+                        <!-- Chat & reply: messages -->
+                        <Border x:Name="ChatPanel" Style="{StaticResource Card}" Visibility="Collapsed">
+                            <StackPanel>
+                                <TextBlock Text="Reply messages" Style="{StaticResource CardTitle}" />
+                                <TextBlock Style="{StaticResource Hint}" Margin="0,4,0,10"
+                                           Text="Sent in order: the 1st reply in a chat uses message 1, the next reply in that chat uses 2, and so on." />
+                                <ItemsControl x:Name="ReplyList">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <DockPanel Margin="0,3">
+                                                <TextBlock Text="{Binding Label}" Width="28" VerticalAlignment="Center"
+                                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                                <Button Content="✕" DockPanel.Dock="Right" Width="34" Padding="0,5"
+                                                        Margin="6,0,0,0" VerticalAlignment="Top"
+                                                        Click="RemoveMessage_Click" ToolTip="Remove this message" />
+                                                <TextBox Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}"
+                                                         TextWrapping="Wrap" />
+                                            </DockPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <Button Content="+ Add message" Margin="28,6,0,0" Click="AddMessage_Click" />
+                                <Border Style="{StaticResource Divider}" />
+                                <CheckBox x:Name="DryRunCheck">
+                                    <TextBlock TextWrapping="Wrap" Text="Dry run: type each message but don't press Send" />
+                                </CheckBox>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Chat & reply: timing -->
+                        <Border x:Name="ChatTimingPanel" Style="{StaticResource Card}" Visibility="Collapsed">
+                            <StackPanel>
+                                <TextBlock Text="Chat timing" Style="{StaticResource CardTitle}" Margin="0,0,0,8" />
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="190" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+
+                                    <TextBlock Grid.Row="0" Text="I'm hosting every" Style="{StaticResource Label}" />
+                                    <DockPanel Grid.Row="0" Grid.Column="1" Margin="0,4">
+                                        <TextBox x:Name="HostingEveryBox" Width="72" DockPanel.Dock="Left" />
+                                        <TextBlock Style="{StaticResource Hint}" Margin="10,0,0,0"
+                                                   Text="minutes (waits for the current pass to finish)" />
+                                    </DockPanel>
+
+                                    <TextBlock Grid.Row="1" Text="Wait before sending" Style="{StaticResource Label}" />
+                                    <DockPanel Grid.Row="1" Grid.Column="1" Margin="0,4">
+                                        <TextBox x:Name="SendDelayBox" Width="72" DockPanel.Dock="Left" />
+                                        <TextBlock Style="{StaticResource Hint}" Margin="10,0,0,0"
+                                                   Text="seconds after typing each message" />
+                                    </DockPanel>
+
+                                    <TextBlock Grid.Row="2" Text="Delay after each chat check" Style="{StaticResource Label}" />
+                                    <DockPanel Grid.Row="2" Grid.Column="1" Margin="0,4">
+                                        <TextBox x:Name="ChatDelayBox" Width="72" DockPanel.Dock="Left" />
+                                        <TextBlock Style="{StaticResource Hint}" Margin="10,0,0,0"
+                                                   Text="seconds (only profiles with new messages are opened)" />
+                                    </DockPanel>
+
+                                    <TextBlock Grid.Row="3" Text="Delay after each refresh" Style="{StaticResource Label}" />
+                                    <DockPanel Grid.Row="3" Grid.Column="1" Margin="0,4">
+                                        <TextBox x:Name="RefreshDelayBox" Width="72" DockPanel.Dock="Left" />
+                                        <TextBlock Style="{StaticResource Hint}" Margin="10,0,0,0"
+                                                   Text="seconds (I'm hosting passes use the delay under Pace and loops)" />
+                                    </DockPanel>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Chat & reply: phone notifications -->
+                        <Border x:Name="TelegramPanel" Style="{StaticResource Card}" Visibility="Collapsed">
+                            <StackPanel>
+                                <TextBlock Text="Phone notifications (Telegram)" Style="{StaticResource CardTitle}"
+                                           Margin="0,0,0,6" />
+                                <CheckBox x:Name="TelegramCheck" Margin="0,0,0,6">
+                                    <TextBlock TextWrapping="Wrap"
+                                               Text="Notify my phone when someone replies after my last message" />
+                                </CheckBox>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="190" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <TextBlock Text="Bot token" Style="{StaticResource Label}" />
+                                    <PasswordBox x:Name="TelegramTokenBox" Grid.Column="1" Grid.ColumnSpan="2"
+                                                 Margin="0,4" ToolTip="From @BotFather in Telegram" />
+                                    <TextBlock Grid.Row="1" Text="Chat ID" Style="{StaticResource Label}" />
+                                    <TextBox x:Name="TelegramChatIdBox" Grid.Row="1" Grid.Column="1" Margin="0,4" />
+                                    <Button Grid.Row="1" Grid.Column="2" Content="Get chat ID" Margin="8,4,0,4"
+                                            Click="TelegramGetChatId_Click"
+                                            ToolTip="Send your bot any message in Telegram first, then click this" />
+                                    <DockPanel Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" Margin="0,4,0,0"
+                                               LastChildFill="False">
+                                        <CheckBox x:Name="TelegramIncludeTextCheck" Content="Include their message text" />
+                                        <Button Content="Send test" DockPanel.Dock="Right" Click="TelegramTest_Click" />
+                                    </DockPanel>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Combined task -->
+                        <Border x:Name="CombinedPanel" Style="{StaticResource Card}" Visibility="Collapsed">
+                            <StackPanel>
+                                <TextBlock Text="Pass pattern" Style="{StaticResource CardTitle}" Margin="0,0,0,8" />
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="190" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <TextBlock Text="I'm hosting after" Style="{StaticResource Label}" />
+                                    <DockPanel Grid.Column="1" Margin="0,4">
+                                        <TextBox x:Name="EveryBox" Width="72" DockPanel.Dock="Left" />
+                                        <TextBlock Style="{StaticResource Hint}" Margin="10,0,0,0"
+                                                   Text="refresh passes, then 1 I'm hosting pass (repeats)" />
+                                    </DockPanel>
+                                    <TextBlock x:Name="PatternText" Grid.Row="1" Grid.Column="1" Margin="0,4,0,0"
+                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                               FontFamily="Cascadia Mono, Consolas" FontSize="12.5" TextWrapping="Wrap" />
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Refresh -->
+                        <Border x:Name="RefreshPanel" Style="{StaticResource Card}">
+                            <StackPanel>
+                                <TextBlock Text="Tab to refresh" Style="{StaticResource CardTitle}" Margin="0,0,0,6" />
+                                <RadioButton x:Name="ActiveTabRadio" GroupName="Target" IsChecked="True"
+                                             Content="Active tab in the profile's front-most window" />
+                                <DockPanel>
+                                    <RadioButton x:Name="TitleTabRadio" GroupName="Target" DockPanel.Dock="Left"
+                                                 Content="Tab whose title contains" />
+                                    <TextBox x:Name="TitleBox" Margin="10,0,0,0" VerticalAlignment="Center"
+                                             IsEnabled="{Binding IsChecked, ElementName=TitleTabRadio}" />
+                                </DockPanel>
+                                <Border Style="{StaticResource Divider}" Margin="0,10,0,8" />
+                                <CheckBox x:Name="KeyFallbackCheck">
+                                    <TextBlock TextWrapping="Wrap"
+                                               Text="If the reload button can't be used, focus the window and press F5" />
+                                </CheckBox>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- I'm hosting -->
+                        <Border x:Name="StatusPanel" Style="{StaticResource Card}" Visibility="Collapsed">
+                            <StackPanel>
+                                <TextBlock Text="I'm hosting status" Style="{StaticResource CardTitle}" Margin="0,0,0,8" />
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="190" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <TextBlock Text="Status to set" Style="{StaticResource Label}" />
+                                    <TextBox x:Name="StatusBox" Grid.Column="1" Margin="0,4" />
+                                    <TextBlock Grid.Row="1" Text="Status field label" Style="{StaticResource Label}" />
+                                    <TextBox x:Name="RowLabelBox" Grid.Row="1" Grid.Column="1" Margin="0,4"
+                                             ToolTip="Text next to the status dropdown on the edit screen" />
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Chat logs -->
+                        <Border x:Name="ReadPanel" Style="{StaticResource Card}" Visibility="Collapsed">
+                            <StackPanel>
+                                <TextBlock Text="Chat logs" Style="{StaticResource CardTitle}" Margin="0,0,0,8" />
+                                <DockPanel>
+                                    <Button x:Name="OpenLogsButton" Content="Open chat logs folder"
+                                            DockPanel.Dock="Left" Click="OpenLogs_Click" />
+                                    <TextBlock x:Name="ReadHint" Style="{StaticResource Hint}" Margin="12,0,0,0"
+                                               Text="Read only: opens unread chats and saves them. Nothing is sent." />
+                                </DockPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Helper extension (any task that uses it) -->
+                        <Border x:Name="ExtensionPanel" Style="{StaticResource Card}" Visibility="Collapsed">
+                            <StackPanel>
+                                <TextBlock Text="Helper extension" Style="{StaticResource CardTitle}" Margin="0,0,0,8" />
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="190" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <TextBlock Text="Site tab (address contains)" Style="{StaticResource Label}" />
+                                    <TextBox x:Name="TabMatchBox" Grid.Column="1" Margin="0,4"
+                                             ToolTip="Part of the site's address, e.g. the domain. Leave empty to use the active tab." />
+
+                                    <TextBlock Grid.Row="1" Text="Extension shortcut" Style="{StaticResource Label}" />
+                                    <DockPanel Grid.Row="1" Grid.Column="1" Margin="0,4">
+                                        <TextBox x:Name="HotkeyBox" Width="130" DockPanel.Dock="Left" />
+                                        <TextBlock Style="{StaticResource Hint}" Margin="10,0,0,0"
+                                                   Text="must match chrome://extensions/shortcuts" />
+                                    </DockPanel>
+
+                                    <TextBlock Grid.Row="2" Text="Wait per step" Style="{StaticResource Label}" />
+                                    <DockPanel Grid.Row="2" Grid.Column="1" Margin="0,4">
+                                        <TextBox x:Name="StepTimeoutBox" Width="72" DockPanel.Dock="Left" />
+                                        <TextBlock Style="{StaticResource Hint}" Margin="10,0,0,0"
+                                                   Text="seconds (max time to wait for each screen)" />
+                                    </DockPanel>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Shared by every task -->
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <TextBlock Text="Pace and loops" Style="{StaticResource CardTitle}" Margin="0,0,0,8" />
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="190" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+
+                                    <TextBlock Text="Delay after each profile" Style="{StaticResource Label}" />
+                                    <DockPanel Grid.Column="1" Margin="0,4">
+                                        <TextBox x:Name="DelayBox" Width="72" DockPanel.Dock="Left" />
+                                        <TextBlock Style="{StaticResource Hint}" Margin="10,0,0,0" Text="seconds" />
+                                    </DockPanel>
+
+                                    <TextBlock Grid.Row="1" Text="Plus random extra delay" Style="{StaticResource Label}" />
+                                    <DockPanel Grid.Row="1" Grid.Column="1" Margin="0,4">
+                                        <TextBox x:Name="JitterBox" Width="72" DockPanel.Dock="Left" />
+                                        <TextBlock Style="{StaticResource Hint}" Margin="10,0,0,0"
+                                                   Text="seconds at most (0 = none)" />
+                                    </DockPanel>
+
+                                    <TextBlock Grid.Row="2" Text="Number of loops" Style="{StaticResource Label}" />
+                                    <DockPanel Grid.Row="2" Grid.Column="1" Margin="0,4">
+                                        <TextBox x:Name="LoopsBox" Width="72" DockPanel.Dock="Left" />
+                                        <TextBlock x:Name="LoopsHint" Style="{StaticResource Hint}" Margin="10,0,0,0"
+                                                   Text="complete passes, then stop" />
+                                    </DockPanel>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </Grid>
+        </Grid>
+
+        <!-- ===== Drag to resize the activity log ===== -->
+        <Rectangle Grid.Row="3" Width="40" Height="3" RadiusX="1.5" RadiusY="1.5" Margin="0,5"
+                   IsHitTestVisible="False" Fill="{DynamicResource ControlStrokeColorDefaultBrush}" />
+        <GridSplitter Grid.Row="3" Height="13" HorizontalAlignment="Stretch" VerticalAlignment="Center"
+                      Background="Transparent" ResizeDirection="Rows" ResizeBehavior="PreviousAndNext"
+                      ToolTip="Drag to resize the activity log" />
+
+        <!-- ===== Run bar and activity log (always in view) ===== -->
+        <Grid Grid.Row="4" Margin="16,0,16,14">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <Grid Margin="0,0,0,10">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Orientation="Horizontal">
+                    <Button x:Name="StartButton" Content="Start" MinWidth="104" Click="Start_Click" IsDefault="True"
+                            Style="{DynamicResource AccentButtonStyle}" />
+                    <Button x:Name="TestButton" Content="Test 1 profile" MinWidth="104" Margin="8,0,0,0"
+                            Click="Test_Click" ToolTip="Run once on the first ticked profile only" />
+                    <Button x:Name="PauseButton" Content="Pause" MinWidth="88" Margin="20,0,0,0" Click="Pause_Click" />
+                    <Button x:Name="TerminateButton" Content="Terminate" MinWidth="88" Margin="8,0,0,0"
+                            Click="Terminate_Click" ToolTip="Stop the running task" />
+                </StackPanel>
+                <TextBlock x:Name="StatusText" Grid.Column="1" Text="Ready." Margin="18,0,0,0"
+                           FontWeight="SemiBold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                           ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}" />
+            </Grid>
+
+            <Border Grid.Row="1" Style="{StaticResource Card}" Padding="4" Margin="0">
+                <ListBox x:Name="LogList" Background="Transparent" BorderThickness="0"
+                         FontFamily="Cascadia Mono, Consolas" FontSize="12"
+                         ScrollViewer.HorizontalScrollBarVisibility="Auto">
+                    <ListBox.Resources>
+                        <Thickness x:Key="ListBoxItemPadding">8,1</Thickness>
+                    </ListBox.Resources>
+                </ListBox>
+            </Border>
+        </Grid>
     </Grid>
 </Window>
