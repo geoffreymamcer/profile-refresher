@@ -78,6 +78,12 @@ public sealed class RefreshRunner
     // Their orange dot is already gone, so without this they'd wait until the next new message.
     private readonly Dictionary<string, int> _recheck = new();
     private const int MaxRechecks = 3;
+
+    /// <summary>
+    /// Have the next chat pass open this profile even though its orange dot is gone. Used after a phone
+    /// reply: opening the chat list to send it clears the dot, so other new chats there would be missed.
+    /// </summary>
+    public void RequestChatCheck(string profileKey) => _recheck[profileKey] = 0;
     private LoopStep? _chatStep;
 
     public RefreshRunner(BrowserScanner scanner) => _scanner = scanner;

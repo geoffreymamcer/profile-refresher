@@ -650,6 +650,14 @@ public partial class MainWindow : Window
                                 var data = ConversationStore.ParseReadChats(outcome.Data);
                                 if (data is not null)
                                     foreach (var chat in data.Chats) ConversationStore.Merge(profile, chat);
+
+                                // Opening the chat list to send this cleared the orange dot. If other chats were
+                                // new (or we can't tell), make sure the next chat pass still visits this profile.
+                                if (data is null || data.HadDot || data.UnreadLeft > 0)
+                                {
+                                    _runner?.RequestChatCheck(profile.Key);
+                                    AddLog($"[Phone reply] {profile.DisplayName}: other new chats there; it will be checked in the next chat pass.");
+                                }
                             }
 
                             bool ok = outcome?.Ok == true;
