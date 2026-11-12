@@ -2,11 +2,15 @@
 # Download from: Actions tab → latest run → Artifacts.
 #   ProfileRefresher-Setup : the installer (brings its own .NET; nothing else to install)
 #   ProfileRefresher       : the bare .exe (needs the .NET 10 Desktop Runtime)
+# On main, a new <Version> in ProfileRefresher.csproj is published as a GitHub Release; the app
+# checks the latest Release and offers it with an Update now button. Notes come from CHANGELOG.md.
 name: build
 on: [push, workflow_dispatch]
 jobs:
   build:
     runs-on: windows-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -48,3 +52,29 @@ jobs:
             publish/screenshots
             publish/install.log
           if-no-files-found: ignore
+
+      - name: Publish a GitHub Release for a new version
+        if: github.ref == 'refs/heads/main'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $v = (Select-Xml -Path ProfileRefresher.csproj -XPath '//Version').Node.InnerText
+          gh release view "v$v" *> $null
+          if ($LASTEXITCODE -eq 0) { Write-Host "v$v is already released."; exit 0 }
+          $log = Get-Content CHANGELOG.md -Raw
+          $m = [regex]::Match($log, "(?ms)^## v$([regex]::Escape($v))\s*\r?\n(.*?)(?=^## |\z)")
+          $notes = if ($m.Success) { $m.Groups[1].Value.Trim() } else { "Version $v" }
+          Set-Content notes.md $notes
+          gh release create "v$v" publish/ProfileRefresher-Setup.exe --title "v$v" --notes-file notes.md
+          if ($LASTEXITCODE) { exit 1 }
+
+      - name: TEMP publish screenshots to a branch
+        if: always() && github.ref != 'refs/heads/main'
+        shell: bash
+        run: |
+          cd publish/screenshots
+          git init -q -b ci-screenshots
+          git config user.name ci && git config user.email ci@example.invalid
+          git add . && git commit -q -m screenshots
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" ci-screenshots

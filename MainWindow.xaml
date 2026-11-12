@@ -74,8 +74,11 @@
             <RowDefinition Height="200" MinHeight="130" />
         </Grid.RowDefinitions>
 
-        <!-- ===== Header: name, credit, run state ===== -->
-        <DockPanel Grid.Row="0" Margin="20,14,20,12">
+        <!-- ===== Header: name, credit, run state, update banner ===== -->
+        <StackPanel Grid.Row="0">
+        <DockPanel Margin="20,14,20,12">
+            <Button x:Name="CheckUpdateButton" DockPanel.Dock="Right" VerticalAlignment="Center" Margin="10,0,0,0"
+                    Content="Check for updates" Click="CheckUpdate_Click" />
             <Border DockPanel.Dock="Right" VerticalAlignment="Center" Padding="12,5" CornerRadius="14"
                     BorderThickness="1"
                     Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
@@ -92,8 +95,34 @@
                 <TextBlock Text="Browser Profile Refresher" FontSize="20" FontWeight="SemiBold" />
                 <!-- Credit (text is set and verified in code) -->
                 <TextBlock x:Name="CreditText" Style="{StaticResource Hint}" Margin="0,2,0,0" />
+                <TextBlock x:Name="VersionText" Style="{StaticResource Hint}" Margin="0,1,0,0" />
             </StackPanel>
         </DockPanel>
+
+        <!-- Update available (shown by code) -->
+        <Border x:Name="UpdateBanner" Visibility="Collapsed" Margin="16,0,16,12" Padding="16,12"
+                CornerRadius="8" BorderThickness="1"
+                Background="{DynamicResource SystemFillColorAttentionBackgroundBrush}"
+                BorderBrush="{DynamicResource AccentFillColorDefaultBrush}">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
+                    <Button x:Name="UpdateLaterButton" Content="Later" MinWidth="72" Click="UpdateLater_Click"
+                            ToolTip="Hide this until the app checks again" />
+                    <Button x:Name="UpdateNotesButton" Content="What's new" MinWidth="96" Margin="8,0,0,0"
+                            Click="UpdateNotes_Click" ToolTip="Open the release page on GitHub" />
+                    <Button x:Name="UpdateNowButton" Content="Update now" MinWidth="110" Margin="8,0,0,0"
+                            Click="UpdateNow_Click" Style="{DynamicResource AccentButtonStyle}" />
+                </StackPanel>
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock x:Name="UpdateTitle" FontWeight="SemiBold" TextWrapping="Wrap" />
+                    <TextBlock x:Name="UpdateDetail" Style="{StaticResource Hint}" Margin="0,3,0,0"
+                               MaxHeight="54" TextTrimming="CharacterEllipsis" />
+                    <ProgressBar x:Name="UpdateProgress" Height="4" Margin="0,8,0,0" Maximum="1"
+                                 Visibility="Collapsed" />
+                </StackPanel>
+            </DockPanel>
+        </Border>
+        </StackPanel>
 
         <!-- ===== Step 1: what to run ===== -->
         <Border Grid.Row="1" Style="{StaticResource Card}" Margin="16,0,16,12">
