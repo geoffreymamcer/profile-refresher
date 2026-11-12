@@ -184,12 +184,17 @@ public sealed class ExtensionBridge : IDisposable
             try { ctx = await _listener.GetContextAsync(); }
             catch { break; }
 
-            try { await HandleAsync(ctx); }
-            catch { /* ignore a bad request */ }
-            finally
+            // Each request on its own: in Multitask mode every extension keeps a /wait request open,
+            // which must not hold up the others (or dot reports and results).
+            _ = Task.Run(async () =>
             {
-                try { ctx.Response.Close(); } catch { }
-            }
+                try { await HandleAsync(ctx); }
+                catch { /* ignore a bad request */ }
+                finally
+                {
+                    try { ctx.Response.Close(); } catch { }
+                }
+            });
         }
     }
 

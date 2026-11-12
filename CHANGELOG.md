@@ -2,6 +2,10 @@
 
 The app shows the section for the new version when an update is available. Keep each line short.
 
+## v1.2.1
+
+- Fix: Multitask mode fell back to Focus mode (and maximized windows) when more than one profile was running
+
 ## v1.2.0
 
 - Autopilot has two modes: Focus (as before) and Multitask (new, testing)
