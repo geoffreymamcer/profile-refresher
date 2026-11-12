@@ -19,13 +19,21 @@ and run it. It installs for your Windows user only, so it never asks for adminis
 brings its own .NET: there is nothing else to install. You get a Start Menu shortcut (and a desktop one
 if you leave that ticked) and an entry under Windows Settings → Apps to uninstall it.
 
-To update, run the newer Setup over the old one. Your settings and chat logs are kept (they live in
-`%AppData%\ProfileRefresher` and `Documents\ProfileRefresher`), also when you uninstall.
+**Updates.** The app checks for a new version when it starts and every few hours (or click
+**Check for updates**). When there is one, a banner shows what's new; click **Update now** and the app
+downloads it, closes, installs it and opens again by itself. It's only offered while no task is running.
+Your settings and chat logs are kept (they live in `%AppData%\ProfileRefresher` and
+`Documents\ProfileRefresher`), also when you uninstall. You can also run a newer Setup over the old one.
+
+New versions are published as GitHub Releases: raise `<Version>` in `ProfileRefresher.csproj`, add a
+section for it at the top of `CHANGELOG.md` (shown in the banner), and push to `main`.
 
 The helper extension is installed next to the app; the Start Menu shortcut
 **Browser Profile Refresher extension folder** opens it. Windows can't add an extension to Chrome or Edge
-for you, so load it once in each profile (see the one-time setup below). After an update, click the
-reload button on the extension's card in `chrome://extensions` and reload the site tab.
+for you, so load it once in each profile (see the one-time setup below), from
+`%LOCALAPPDATA%\Programs\ProfileRefresher\extension` (paste that into the folder picker's address bar).
+After an update the extension reloads itself, and the site tab, the next time a task runs. If you loaded
+it from another folder it can't, and the log tells you to load it from the folder above instead.
 
 **"Windows protected your PC".** The installer is not signed with a paid certificate, so SmartScreen may
 show this the first time. Click **More info → Run anyway**.

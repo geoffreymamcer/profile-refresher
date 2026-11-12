@@ -100,6 +100,16 @@ public partial class MainWindow : Window
         };
         BrowserCombo.SelectionChanged += async (_, _) => await DetectAsync();
         Loaded += async (_, _) => await DetectAsync();
+
+        // Updates: check shortly after start, then every few hours.
+        VersionText.Text = "Version " + Updater.CurrentText[1..];
+        Loaded += async (_, _) =>
+        {
+            await Task.Delay(TimeSpan.FromSeconds(3));
+            await CheckForUpdateAsync(userAsked: false);
+        };
+        _updateTimer.Tick += async (_, _) => await CheckForUpdateAsync(userAsked: false);
+        _updateTimer.Start();
         SetRunning(false);
     }
 
@@ -489,6 +499,13 @@ public partial class MainWindow : Window
             bridge = new ExtensionBridge();
             _offlineSince.Clear(); // a fresh run starts with no known outages
             bridge.OfflineChanged += (key, offline) => Dispatcher.BeginInvoke(() => OnSiteOfflineChanged(key, offline));
+            bridge.ExtensionOutdated += (key, version) => Dispatcher.BeginInvoke(() =>
+            {
+                string name = _profiles.FirstOrDefault(p => p.Key == key)?.DisplayName ?? "a profile";
+                AddLog($"!! The helper extension in {name} is old (v{version}, installed: v{ExtensionBridge.InstalledExtensionVersion}). " +
+                       "It was loaded from another folder: in chrome://extensions remove it, then Load unpacked from " +
+                       System.IO.Path.Combine(AppContext.BaseDirectory, "extension"));
+            });
             try
             {
                 bridge.Start();
@@ -755,6 +772,122 @@ public partial class MainWindow : Window
         RunDot.SetResourceReference(System.Windows.Shapes.Shape.FillProperty, brushKey);
     }
 
+    // ---------- Updates ----------
+
+    private readonly System.Windows.Threading.DispatcherTimer _updateTimer = new() { Interval = TimeSpan.FromHours(4) };
+    private UpdateInfo? _update;
+    private Version? _dismissedUpdate;
+    private bool _checkingUpdate, _installingUpdate;
+
+    private async Task CheckForUpdateAsync(bool userAsked)
+    {
+        if (_checkingUpdate || _installingUpdate) return;
+        _checkingUpdate = true;
+        CheckUpdateButton.IsEnabled = false;
+        if (userAsked) CheckUpdateButton.Content = "Checking…";
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+            var found = await Updater.CheckAsync(cts.Token);
+            if (found is null)
+            {
+                _update = null;
+                UpdateBanner.Visibility = Visibility.Collapsed;
+                if (userAsked) AddLog($"Updates: you have the latest version ({Updater.CurrentText}).");
+                return;
+            }
+
+            bool isNew = _update?.Version != found.Version;
+            _update = found;
+            if (isNew) AddLog($"Updates: {found.Tag} is available (you have {Updater.CurrentText}).");
+            if (userAsked || found.Version != _dismissedUpdate) ShowUpdateBanner();
+        }
+        catch (Exception ex)
+        {
+            if (userAsked) AddLog("Updates: couldn't check right now (" + ex.Message + ").");
+        }
+        finally
+        {
+            _checkingUpdate = false;
+            CheckUpdateButton.IsEnabled = true;
+            CheckUpdateButton.Content = "Check for updates";
+        }
+    }
+
+    private void ShowUpdateBanner()
+    {
+        if (_update is null) return;
+        UpdateTitle.Text = $"Update available: {_update.Tag}  (you have {Updater.CurrentText})";
+        string notes = string.Join("  ·  ", _update.Notes
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(l => !l.StartsWith('#'))
+            .Select(l => l.TrimStart('-', '*', ' ')));
+        UpdateDetail.Text = notes.Length > 0 ? notes : "Settings and chat logs are kept.";
+        UpdateNotesButton.Visibility = _update.PageUrl.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+        UpdateBanner.Visibility = Visibility.Visible;
+        UpdateUpdateButtons();
+    }
+
+    /// <summary>Updating closes the app, so it's only offered while no task is running.</summary>
+    private void UpdateUpdateButtons()
+    {
+        bool busy = _cts is not null;
+        UpdateNowButton.IsEnabled = !busy && !_installingUpdate;
+        UpdateNowButton.ToolTip = busy ? "Terminate the running task first (updating restarts the app)"
+                                       : "Download and install it. The app restarts on its own.";
+        UpdateLaterButton.IsEnabled = !_installingUpdate;
+    }
+
+    private void CheckUpdate_Click(object sender, RoutedEventArgs e) => _ = CheckForUpdateAsync(userAsked: true);
+
+    private void UpdateLater_Click(object sender, RoutedEventArgs e)
+    {
+        _dismissedUpdate = _update?.Version;
+        UpdateBanner.Visibility = Visibility.Collapsed;
+    }
+
+    private void UpdateNotes_Click(object sender, RoutedEventArgs e)
+    {
+        if (_update?.PageUrl is { Length: > 0 } url && url.StartsWith("https://github.com/"))
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true });
+    }
+
+    private async void UpdateNow_Click(object sender, RoutedEventArgs e)
+    {
+        if (_update is null || _cts is not null || _installingUpdate) return;
+        _installingUpdate = true;
+        UpdateUpdateButtons();
+        StartButton.IsEnabled = TestButton.IsEnabled = false;
+        UpdateNowButton.Content = "Downloading…";
+        UpdateProgress.Value = 0;
+        UpdateProgress.Visibility = Visibility.Visible;
+        AddLog($"Updates: downloading {_update.Tag}…");
+        try
+        {
+            var progress = new Progress<double>(v =>
+            {
+                UpdateProgress.Value = v;
+                UpdateNowButton.Content = $"Downloading… {v:P0}";
+            });
+            await Updater.DownloadAndStartAsync(_update, progress, CancellationToken.None);
+            UpdateNowButton.Content = "Installing…";
+            AddLog($"Updates: installing {_update.Tag}. The app will close and open again by itself.");
+            SaveSettings();
+            await Task.Delay(800);
+            Application.Current.Shutdown();
+        }
+        catch (Exception ex)
+        {
+            AddLog("Updates: FAILED: " + ex.Message);
+            UpdateTitle.Text = "The update couldn't be installed: " + ex.Message;
+            UpdateNowButton.Content = "Try again";
+            UpdateProgress.Visibility = Visibility.Collapsed;
+            _installingUpdate = false;
+            StartButton.IsEnabled = TestButton.IsEnabled = true;
+            UpdateUpdateButtons();
+        }
+    }
+
     private void SetRunning(bool running)
     {
         StartButton.IsEnabled = !running;
@@ -765,6 +898,7 @@ public partial class MainWindow : Window
         if (running) SetRunState("Running", "SystemFillColorSuccessBrush");
         else SetRunState("Idle", "SystemFillColorNeutralBrush");
 
+        UpdateUpdateButtons();
         BrowserCombo.IsEnabled = !running;
         TaskCombo.IsEnabled = !running;
         DetectButton.IsEnabled = !running;

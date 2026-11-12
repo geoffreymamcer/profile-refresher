@@ -30,6 +30,13 @@ $startMenu = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\Brows
 if (!(Test-Path $startMenu)) { throw 'Start Menu shortcut missing' }
 Write-Host "Installed to $dir"
 
+# --- Fake "newer release" for the update test below ---
+$port = 47899
+$server = Start-Process powershell -PassThru -WindowStyle Hidden -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass',
+    '-File', (Join-Path $PSScriptRoot 'fake-release-server.ps1'), '-Port', $port, '-SetupPath', "`"$setup`"", '-Version', '99.0.0'
+Start-Sleep 3
+$env:PROFILEREFRESHER_UPDATE_TEST_URL = "http://localhost:$port/release.json"
+
 # --- Start the installed app (with no .NET on the PATH, to prove it brings its own) ---
 $env:DOTNET_ROOT = $null
 $app = Start-Process (Join-Path $dir 'ProfileRefresher.exe') -PassThru
@@ -75,9 +82,39 @@ foreach ($id in 'ReplyList', 'HostingEveryBox', 'TelegramCheck', 'TabMatchBox', 
 }
 Write-Host 'Autopilot settings are shown.'
 
+# --- Update: the banner appears, Update now installs it and the app comes back by itself ---
+$banner = $null
+$deadline = (Get-Date).AddSeconds(30)
+do { Start-Sleep 1; $banner = Find 'UpdateNowButton' } until (($banner -and !$banner.Current.IsOffscreen) -or (Get-Date) -gt $deadline)
+if (!$banner -or $banner.Current.IsOffscreen) { Shot 'no-update-banner'; throw 'Update banner did not appear' }
+$title = Find 'UpdateTitle'
+Write-Host "Update banner: $($title.Current.Name)"
+if ($title.Current.Name -notlike '*v99.0.0*') { throw 'Update banner shows the wrong version' }
+Shot '4-update-banner'
+
+$oldPid = $app.Id
+(Find 'UpdateNowButton').GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+if (!$app.WaitForExit(90000)) { Shot 'update-not-closing'; throw 'App did not close for the update' }
+Write-Host 'App closed for the update.'
+
+$exe = Join-Path $dir 'ProfileRefresher.exe'
+$new = $null
+$deadline = (Get-Date).AddSeconds(120)
+do {
+    Start-Sleep 2
+    $new = Get-Process ProfileRefresher -ErrorAction SilentlyContinue |
+        Where-Object { $_.Id -ne $oldPid -and $_.Path -eq $exe -and $_.MainWindowHandle -ne 0 } | Select-Object -First 1
+} until ($new -or (Get-Date) -gt $deadline)
+if (!$new) { Shot 'no-relaunch'; throw 'App did not start again after the update' }
+Start-Sleep 4
+Shot '5-after-update'
+Write-Host "App started again after the update (pid $($new.Id))."
+$app = $new
+
 # --- Close and uninstall ---
 $app.CloseMainWindow() | Out-Null
 if (!$app.WaitForExit(15000)) { $app.Kill(); throw 'App did not close' }
+Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue
 $u = Start-Process (Join-Path $dir 'unins000.exe') -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait -PassThru
 if ($u.ExitCode -ne 0) { throw "Uninstaller exit code $($u.ExitCode)" }
 Start-Sleep 3

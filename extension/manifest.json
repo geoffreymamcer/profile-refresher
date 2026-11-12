@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Profile Refresher Helper",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "Developed by Jeymeyzer. XYZ Chatter (Team Mel). Runs the status steps when Profile Refresher asks; talks only to the app on localhost.",
   "author": "Jeymeyzer · XYZ Chatter (Team Mel)",
   "permissions": [

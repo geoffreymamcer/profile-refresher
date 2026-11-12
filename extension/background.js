@@ -27,9 +27,37 @@ chrome.runtime.onMessage.addListener((msg, sender) => {
   if (msg?.type === "dot" && sender.tab) reportDot(sender.tab, msg);
 });
 
+// ---------- Self-update ----------
+// The app's installer replaces this extension's files on disk, but Chrome keeps running the old copy
+// until the extension is reloaded. The app tells us which version is installed; if ours differs we
+// reload once, and after the restart reload the site tabs so they get the new page scripts too.
+const MY_VERSION = chrome.runtime.getManifest().version;
+const SITE_URLS = chrome.runtime.getManifest().content_scripts.flatMap((c) => c.matches);
+let reloadTriedFor = null;
+const reloadTriedReady = chrome.storage.local.get("reloadTriedFor").then((s) => { reloadTriedFor = s.reloadTriedFor ?? null; });
+
+async function maybeSelfUpdate(installed) {
+  if (!installed || installed === MY_VERSION) return;
+  await reloadTriedReady;
+  if (reloadTriedFor === installed) return; // already tried: we were loaded from another folder
+  reloadTriedFor = installed;
+  await chrome.storage.local.set({ reloadTriedFor: installed, reloadSiteTabs: true });
+  chrome.runtime.reload();
+}
+
+(async () => {
+  const { reloadSiteTabs } = await chrome.storage.local.get("reloadSiteTabs");
+  if (!reloadSiteTabs) return;
+  await chrome.storage.local.remove("reloadSiteTabs");
+  for (const t of await chrome.tabs.query({ url: SITE_URLS })) {
+    try { await chrome.tabs.reload(t.id); } catch { /* tab closed */ }
+  }
+})();
+
 async function reportDot(tab, msg) {
   try {
-    await fetch(`${APP}/status`, {
+    await reloadTriedReady;
+    const r = await fetch(`${APP}/status`, {
       method: "POST",
       headers: { "Content-Type": "text/plain" },
       body: JSON.stringify({
@@ -38,8 +66,11 @@ async function reportDot(tab, msg) {
         hasButton: !!msg.hasButton,
         hasDot: !!msg.hasDot,
         offline: !!msg.offline,
+        version: MY_VERSION,
+        reloadTried: reloadTriedFor !== null && reloadTriedFor !== MY_VERSION,
       }),
     });
+    if (r.status === 200) maybeSelfUpdate((await r.json())?.extensionVersion);
   } catch {
     // app not running
   }

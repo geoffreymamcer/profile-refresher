@@ -50,5 +50,13 @@ Name: "{autoprograms}\Browser Profile Refresher extension folder"; Filename: "{a
 Name: "{autodesktop}\Browser Profile Refresher"; Filename: "{app}\ProfileRefresher.exe"; Tasks: desktopicon
 
 [Run]
+; After an update started from the app (/RELAUNCH=1), start the app again.
+Filename: "{app}\ProfileRefresher.exe"; Flags: nowait; Check: Relaunch
 Filename: "{app}\ProfileRefresher.exe"; Description: "Start Browser Profile Refresher"; Flags: nowait postinstall skipifsilent
 Filename: "{app}\extension"; Description: "Open the extension folder (for Load unpacked in Chrome or Edge)"; Flags: postinstall shellexec skipifsilent unchecked
+
+[Code]
+function Relaunch: Boolean;
+begin
+  Result := ExpandConstant('{param:RELAUNCH|0}') = '1';
+end;

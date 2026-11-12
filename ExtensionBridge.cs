@@ -38,7 +38,8 @@ public enum DotState
 }
 
 /// <summary>A live report from dotwatch.js, relayed by the extension.</summary>
-public sealed record DotReport(string? Client, int TabId, bool HasButton, bool HasDot, bool Offline = false);
+public sealed record DotReport(string? Client, int TabId, bool HasButton, bool HasDot, bool Offline = false,
+    string? Version = null, bool ReloadTried = false);
 
 /// <summary>Outcome of a job, including any data the extension sent back.</summary>
 public sealed record JobOutcome(bool Ok, string Message, JsonElement? Data)
@@ -78,6 +79,32 @@ public sealed class ExtensionBridge : IDisposable
     /// Raised on a background thread.
     /// </summary>
     public event Action<string?, bool>? OfflineChanged;
+
+    /// <summary>
+    /// The version of the extension installed next to the app (its manifest.json), or null when the app
+    /// isn't installed with one. Extensions report their own version; an older one reloads itself to pick
+    /// up the new files.
+    /// </summary>
+    public static readonly string? InstalledExtensionVersion = ReadInstalledExtensionVersion();
+
+    private static string? ReadInstalledExtensionVersion()
+    {
+        try
+        {
+            string f = Path.Combine(AppContext.BaseDirectory, "extension", "manifest.json");
+            if (!File.Exists(f)) return null;
+            using var doc = JsonDocument.Parse(File.ReadAllText(f));
+            return doc.RootElement.GetProperty("version").GetString();
+        }
+        catch { return null; }
+    }
+
+    /// <summary>
+    /// An extension is still older than the installed one after reloading itself: it was loaded from another
+    /// folder. Arguments: profile key (null if not linked yet), its version. Raised once per extension copy.
+    /// </summary>
+    public event Action<string?, string>? ExtensionOutdated;
+    private readonly HashSet<string> _outdatedWarned = new();
 
     private static string ClientsPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ProfileRefresher", "extension-clients.json");
@@ -233,8 +260,18 @@ public sealed class ExtensionBridge : IDisposable
                     _reports[(c, report.TabId)] = (report, DateTimeOffset.Now);
                 }
                 if (changed) OfflineChanged?.Invoke(profileKey, report.Offline);
+
+                if (InstalledExtensionVersion is not null && report.Version is { } v && report.ReloadTried &&
+                    v != InstalledExtensionVersion)
+                {
+                    bool first;
+                    lock (_lock) first = _outdatedWarned.Add(c);
+                    if (first) ExtensionOutdated?.Invoke(profileKey, v);
+                }
             }
-            res.StatusCode = 204;
+
+            // Tell the extension which version is installed, so an older copy can reload itself.
+            await WriteJsonAsync(res, JsonSerializer.Serialize(new { extensionVersion = InstalledExtensionVersion }, Json));
             return;
         }
 
