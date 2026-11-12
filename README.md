@@ -137,6 +137,16 @@ Opening a chat marks it as read on the site, the same as when you open it yourse
 Replies in unread chats with your own messages, and keeps the refresh and I'm hosting passes going.
 It runs until you press **Terminate**; the loop count is not used.
 
+**Focus mode or Multitask mode** (under *While Autopilot runs*).
+- **Focus mode** brings each profile's window to the front and presses the extension shortcut. It's the
+  fastest and most reliable, but it takes over the keyboard: use it when you're away from the PC.
+- **Multitask mode** (new, testing) leaves your keyboard and windows alone, so you can keep typing in
+  other apps. The extension asks the app for work itself, refreshes the tab itself, and doesn't maximize
+  the window. It can be slower, because Chrome slows down windows that are hidden or covered.
+  A profile whose extension isn't linked yet (it links on its first Focus-mode step) or doesn't answer
+  uses Focus mode for that step, and the log says so: `[Multitask] <profile>: ... Used Focus mode`.
+  Keep the browser windows a normal size (not minimized) for the site to show the chat list.
+
 **Messages to send (in order).** Type each message in its own box. **+ Add message** adds a box and
 **✕** removes one. The list is a sequence, shared by all profiles: in each chat, the first reply is
 message 1, the next reply in that chat is message 2, and so on. The position is worked out from how many

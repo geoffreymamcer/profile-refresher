@@ -21,7 +21,8 @@ public sealed record ExtensionJob(
     string[]? ReplyMessages = null,
     bool DryRun = false,
     int SendDelayMs = 2000,
-    SendToRequest? SendTo = null);
+    SendToRequest? SendTo = null,
+    bool Quiet = false); // Multitask mode: don't focus or maximize the window, use background timers
 
 /// <summary>Open this person's chat and send these items (a reply typed in Telegram).</summary>
 public sealed record SendToRequest(string UserId, SendItem[] Items);
@@ -67,6 +68,20 @@ public sealed class ExtensionBridge : IDisposable
     private TaskCompletionSource? _picked;
     private TaskCompletionSource<JobResult>? _result;
     private string? _jobProfileKey;
+    // Multitask mode: the current job may only go to its own profile's extension, via /wait.
+    private bool _jobQuietOnly;
+    private TaskCompletionSource _jobPosted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    /// <summary>
+    /// Multitask mode: jobs go to a linked profile's extension when it asks (/wait) instead of bringing the
+    /// window to the front and pressing the shortcut. Falls back to that for a profile that isn't linked yet
+    /// or whose extension doesn't answer.
+    /// </summary>
+    public bool Multitask { get; set; }
+
+    /// <summary>A step used Focus mode in Multitask mode. Arguments: profile key, reason. Raised on a background thread.</summary>
+    public event Action<string, string>? MultitaskFallback;
+    private static readonly TimeSpan QuietPickupTimeout = TimeSpan.FromSeconds(15);
 
     // Which profile each copy of the extension belongs to (learned from jobs, kept between runs).
     private readonly Dictionary<string, string> _clients = LoadClients();
@@ -212,7 +227,9 @@ public sealed class ExtensionBridge : IDisposable
             string? client = req.QueryString["client"];
             lock (_lock)
             {
-                if (_job is not null && !_jobTaken)
+                bool mine = !_jobQuietOnly ||
+                            (!string.IsNullOrEmpty(client) && _clients.TryGetValue(client, out var owner) && owner == _jobProfileKey);
+                if (_job is not null && !_jobTaken && mine)
                 {
                     job = _job;
                     _jobTaken = true; // a second key press must not run the steps twice
@@ -238,6 +255,45 @@ public sealed class ExtensionBridge : IDisposable
             }
             await WriteJsonAsync(res, JsonSerializer.Serialize(job, Json));
             return;
+        }
+
+        if (req.HttpMethod == "GET" && path == "/wait")
+        {
+            string? client = req.QueryString["client"];
+            if (!Multitask || string.IsNullOrEmpty(client))
+            {
+                res.StatusCode = 410; // not in Multitask mode: the extension stops asking
+                return;
+            }
+            var until = DateTime.UtcNow.AddSeconds(20);
+            for (;;)
+            {
+                ExtensionJob? job = null;
+                Task posted;
+                lock (_lock)
+                {
+                    if (_job is not null && !_jobTaken && _jobQuietOnly &&
+                        _clients.TryGetValue(client, out var owner) && owner == _jobProfileKey)
+                    {
+                        job = _job;
+                        _jobTaken = true;
+                        _picked?.TrySetResult();
+                    }
+                    posted = _jobPosted.Task;
+                }
+                if (job is not null)
+                {
+                    await WriteJsonAsync(res, JsonSerializer.Serialize(job, Json));
+                    return;
+                }
+                var left = until - DateTime.UtcNow;
+                if (left <= TimeSpan.Zero || !Multitask)
+                {
+                    res.StatusCode = Multitask ? 204 : 410;
+                    return;
+                }
+                await Task.WhenAny(posted, Task.Delay(left));
+            }
         }
 
         if (req.HttpMethod == "POST" && path == "/status")
@@ -271,7 +327,8 @@ public sealed class ExtensionBridge : IDisposable
             }
 
             // Tell the extension which version is installed, so an older copy can reload itself.
-            await WriteJsonAsync(res, JsonSerializer.Serialize(new { extensionVersion = InstalledExtensionVersion }, Json));
+            await WriteJsonAsync(res, JsonSerializer.Serialize(
+                new { extensionVersion = InstalledExtensionVersion, multitask = Multitask }, Json));
             return;
         }
 
@@ -311,17 +368,44 @@ public sealed class ExtensionBridge : IDisposable
     {
         var picked = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var result = new TaskCompletionSource<JobResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        // Multitask mode: offer the job to this profile's own extension first.
+        string? quietBlocker = null;
+        bool quiet = Multitask && profileKey is not null && (quietBlocker = WhyNotQuiet(profileKey)) is null;
         lock (_lock)
         {
-            _job = job;
+            _job = quiet ? job with { Quiet = true } : job;
             _jobProfileKey = profileKey;
             _jobTaken = false;
+            _jobQuietOnly = quiet;
             _picked = picked;
             _result = result;
+            var posted = _jobPosted;
+            _jobPosted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            posted.TrySetResult(); // wake waiting /wait requests
         }
+        if (Multitask && profileKey is not null && quietBlocker is not null) MultitaskFallback?.Invoke(profileKey, quietBlocker);
 
         try
         {
+            if (quiet)
+            {
+                try { await picked.Task.WaitAsync(QuietPickupTimeout, ct); }
+                catch (TimeoutException) { }
+
+                bool fallBack;
+                lock (_lock)
+                {
+                    fallBack = !_jobTaken;
+                    if (fallBack)
+                    {
+                        _job = job; // the shortcut path, with focus
+                        _jobQuietOnly = false;
+                    }
+                }
+                if (fallBack) MultitaskFallback?.Invoke(profileKey!, "its extension didn't ask for the job in time");
+            }
+
             bool focused = false;
             for (int attempt = 1; attempt <= 2 && !picked.Task.IsCompleted; attempt++)
             {
@@ -354,9 +438,26 @@ public sealed class ExtensionBridge : IDisposable
             {
                 _job = null;
                 _jobProfileKey = null;
+                _jobQuietOnly = false;
                 _picked = null;
                 _result = null;
             }
+        }
+    }
+
+    /// <summary>True when a job for this profile can go to its extension without focus.</summary>
+    public bool CanRunQuietly(string profileKey) => Multitask && WhyNotQuiet(profileKey) is null;
+
+    /// <summary>Why a job for this profile can't go to its extension without focus, or null if it can.</summary>
+    private string? WhyNotQuiet(string profileKey)
+    {
+        lock (_lock)
+        {
+            var clients = _clients.Where(kv => kv.Value == profileKey).Select(kv => kv.Key).ToList();
+            if (clients.Count == 0) return "its extension isn't linked yet (one step in Focus mode links it)";
+            var cutoff = DateTimeOffset.Now - TimeSpan.FromSeconds(75);
+            bool alive = _reports.Any(r => clients.Contains(r.Key.Client) && r.Value.At >= cutoff);
+            return alive ? null : "no recent report from its extension (is the site tab open and the extension up to date?)";
         }
     }
 

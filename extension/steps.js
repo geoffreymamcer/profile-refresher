@@ -14,7 +14,12 @@
 
 export async function runSteps(job) {
   const T = Math.max(3000, job.timeoutMs || 10000);
-  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  // Multitask mode: the window may be hidden or covered, where Chrome slows page timers a lot;
+  // the extension's background keeps time instead.
+  const sleep = (ms) =>
+    job.quiet
+      ? chrome.runtime.sendMessage({ type: "sleep", ms }).catch(() => new Promise((r) => setTimeout(r, ms)))
+      : new Promise((r) => setTimeout(r, ms));
   const norm = (s) =>
     (s || "").replace(/[‘’`´]/g, "'").replace(/\s+/g, " ").trim().toLowerCase();
   const visible = (el) =>

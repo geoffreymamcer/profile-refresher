@@ -1,6 +1,7 @@
 // Profile Refresher Helper · Developed by Jeymeyzer. XYZ Chatter (Team Mel)
-// When the desktop app presses the shortcut, ask the app for the job, run the steps in the
-// site's tab, and send the result back. It only ever talks to the app on localhost.
+// When the desktop app asks (by pressing the shortcut, or in Multitask mode when we ask it), get the
+// job, run the steps in the site's tab, and send the result back. It only ever talks to the app on localhost.
+
 
 import { runSteps } from "./steps.js";
 import { checkDot, readChats } from "./chats.js";
@@ -23,9 +24,39 @@ function clientId() {
 }
 
 // Live dot reports from dotwatch.js → the app (ignored when the app isn't running).
-chrome.runtime.onMessage.addListener((msg, sender) => {
+// "sleep": timers for page scripts in Multitask mode. Chrome slows timers in hidden or covered
+// windows (to as little as once a minute); the extension's own timers aren't slowed.
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg?.type === "dot" && sender.tab) reportDot(sender.tab, msg);
+  if (msg?.type === "sleep") {
+    setTimeout(() => sendResponse(true), Math.max(0, Math.min(60000, Number(msg.ms) || 0)));
+    return true; // answer later
+  }
 });
+
+// ---------- Multitask mode ----------
+// The app doesn't bring the window forward or press the shortcut: we ask it for work ourselves.
+// The app holds each request open until there's a job for this profile (or ~20 s pass).
+let polling = false;
+async function pollForJobs() {
+  if (polling) return;
+  polling = true;
+  try {
+    for (;;) {
+      let r;
+      try {
+        r = await fetch(`${APP}/wait?client=${encodeURIComponent(await clientId())}`, { cache: "no-store" });
+      } catch {
+        return; // app closed
+      }
+      if (r.status === 200) await runJob(await r.json());
+      else if (r.status !== 204) return; // the app isn't in Multitask mode any more
+      await chrome.storage.local.get("clientId"); // keeps this service worker awake between requests
+    }
+  } finally {
+    polling = false;
+  }
+}
 
 // ---------- Self-update ----------
 // The app's installer replaces this extension's files on disk, but Chrome keeps running the old copy
@@ -70,7 +101,11 @@ async function reportDot(tab, msg) {
         reloadTried: reloadTriedFor !== null && reloadTriedFor !== MY_VERSION,
       }),
     });
-    if (r.status === 200) maybeSelfUpdate((await r.json())?.extensionVersion);
+    if (r.status === 200) {
+      const info = await r.json();
+      if (info?.multitask) pollForJobs();
+      maybeSelfUpdate(info?.extensionVersion);
+    }
   } catch {
     // app not running
   }
@@ -89,7 +124,10 @@ async function handleJob() {
   } catch {
     return;
   }
+  await runJob(job);
+}
 
+async function runJob(job) {
   let result;
   try {
     const tab = await findTab(job.tabMatch);
@@ -100,10 +138,13 @@ async function handleJob() {
         message: job.tabMatch ? `no tab whose address or title contains "${job.tabMatch}"` : "no active tab",
       };
     } else {
-      await chrome.tabs.update(tab.id, { active: true });
-      await chrome.windows.update(tab.windowId, { focused: true });
+      if (!tab.active) await chrome.tabs.update(tab.id, { active: true });
+      if (!job.quiet) await chrome.windows.update(tab.windowId, { focused: true });
       await sleep(300);
-      result = job.type === "readChats" ? await doReadChats(tab, job) : await inject(tab, runSteps, job);
+      result =
+        job.type === "readChats" ? await doReadChats(tab, job)
+        : job.type === "reload" ? await reloadTab(tab, job)
+        : await inject(tab, runSteps, job);
     }
   } catch (e) {
     result = { ok: false, step: "Run", message: String(e?.message ?? e) };
@@ -120,6 +161,24 @@ async function handleJob() {
   }
 }
 
+/** Reload the site tab and wait for it to finish loading (Multitask mode's refresh: no keys, no focus). */
+async function reloadTab(tab, job) {
+  const done = new Promise((resolve) => {
+    const onUpdated = (id, info) => {
+      if (id === tab.id && info.status === "complete") {
+        chrome.tabs.onUpdated.removeListener(onUpdated);
+        resolve(true);
+      }
+    };
+    chrome.tabs.onUpdated.addListener(onUpdated);
+    setTimeout(() => { chrome.tabs.onUpdated.removeListener(onUpdated); resolve(false); },
+      Math.max(15000, (job.timeoutMs || 10000) * 3));
+  });
+  await chrome.tabs.reload(tab.id);
+  const loaded = await done;
+  return { ok: true, step: "Reload", message: loaded ? "reloaded" : "reloaded (still loading)" };
+}
+
 async function inject(tab, func, ...args) {
   const [injection] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func, args });
   return injection?.result ?? { ok: false, step: "Run", message: "the page returned no result" };
@@ -134,6 +193,9 @@ async function doReadChats(tab, job) {
   if (!job.sendTo && !dot.hasDot && !dot.listOpen) {
     return { ok: true, step: "Check messages", message: "no new messages", data: { hadDot: false, chats: [] } };
   }
+
+  // Multitask mode: leave the window where it is (maximizing a window brings it to the front).
+  if (job.quiet) return await inject(tab, readChats, job);
 
   const win = await chrome.windows.get(tab.windowId);
   const saved = { state: win.state, left: win.left, top: win.top, width: win.width, height: win.height };

@@ -2,6 +2,12 @@
 
 The app shows the section for the new version when an update is available. Keep each line short.
 
+## v1.2.0
+
+- Autopilot has two modes: Focus (as before) and Multitask (new, testing)
+- Multitask mode works in the background, so you can keep typing in other windows
+- In Multitask mode, a profile that isn't ready uses Focus mode for that step (shown in the log)
+
 ## v1.1.0
 
 - Updates install from inside the app: press Update now and it restarts by itself

@@ -249,6 +249,27 @@
                               HorizontalScrollBarVisibility="Disabled">
                     <StackPanel x:Name="OptionsBox" Margin="0,0,10,0">
 
+                        <!-- Autopilot: Focus or Multitask -->
+                        <Border x:Name="ModePanel" Style="{StaticResource Card}" Visibility="Collapsed">
+                            <StackPanel>
+                                <TextBlock Text="While Autopilot runs" Style="{StaticResource CardTitle}" Margin="0,0,0,8" />
+                                <RadioButton x:Name="FocusModeRadio" GroupName="AutopilotMode" IsChecked="True">
+                                    <StackPanel>
+                                        <TextBlock Text="Focus mode" FontWeight="SemiBold" />
+                                        <TextBlock Style="{StaticResource Hint}"
+                                                   Text="Brings each profile's window to the front and presses the shortcut. Fastest and most reliable; use it when you're away from the PC." />
+                                    </StackPanel>
+                                </RadioButton>
+                                <RadioButton x:Name="MultitaskModeRadio" GroupName="AutopilotMode" Margin="0,8,0,0">
+                                    <StackPanel>
+                                        <TextBlock Text="Multitask mode (new, testing)" FontWeight="SemiBold" />
+                                        <TextBlock Style="{StaticResource Hint}"
+                                                   Text="Works in the background without taking over your keyboard or windows, so you can keep typing elsewhere. Can be slower. A profile that isn't linked yet, or whose extension doesn't answer, uses Focus mode for that step (shown in the log)." />
+                                    </StackPanel>
+                                </RadioButton>
+                            </StackPanel>
+                        </Border>
+
                         <!-- Chat & reply: messages -->
                         <Border x:Name="ChatPanel" Style="{StaticResource Card}" Visibility="Collapsed">
                             <StackPanel>

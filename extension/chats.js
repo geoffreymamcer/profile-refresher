@@ -32,7 +32,12 @@ export function checkDot() {
  */
 export async function readChats(job) {
   const T = Math.max(3000, job.timeoutMs || 10000);
-  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  // Multitask mode: the window may be hidden or covered, where Chrome slows page timers a lot;
+  // the extension's background keeps time instead.
+  const sleep = (ms) =>
+    job.quiet
+      ? chrome.runtime.sendMessage({ type: "sleep", ms }).catch(() => new Promise((r) => setTimeout(r, ms)))
+      : new Promise((r) => setTimeout(r, ms));
   const visible = (el) =>
     !!el && el.isConnected && el.getClientRects().length > 0 && getComputedStyle(el).visibility !== "hidden";
   const all = (sel) => Array.from(document.querySelectorAll(sel)).filter(visible);
