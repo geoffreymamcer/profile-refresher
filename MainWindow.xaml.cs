@@ -80,6 +80,7 @@ public partial class MainWindow : Window
         TelegramChatIdBox.Text = _settings.TelegramChatId;
         TelegramIncludeTextCheck.IsChecked = _settings.TelegramIncludeText;
         DryRunCheck.IsChecked = _settings.ReplyDryRun;
+        (_settings.AutopilotMultitask ? MultitaskModeRadio : FocusModeRadio).IsChecked = true;
 
         AddLog("Browser Profile Refresher · " + Credits.Text);
         UpdateTaskPanels();
@@ -166,6 +167,7 @@ public partial class MainWindow : Window
         StatusPanel.Visibility = Show(IsStatusTask || IsCombinedTask || IsChatTask);
         CombinedPanel.Visibility = Show(IsCombinedTask);
         ChatPanel.Visibility = Show(IsChatTask);
+        ModePanel.Visibility = Show(IsChatTask);
         ChatTimingPanel.Visibility = Show(IsChatTask);
         TelegramPanel.Visibility = Show(IsChatTask);
         TaskHint.Text = TaskCombo.SelectedIndex switch
@@ -484,6 +486,8 @@ public partial class MainWindow : Window
         LoopStep? readStep = null;
         ExtensionBridge? bridge = null;
 
+        bool multitask = chatTask && MultitaskModeRadio.IsChecked == true;
+
         if (wantsRefresh)
         {
             bool fallback = KeyFallbackCheck.IsChecked == true;
@@ -496,7 +500,14 @@ public partial class MainWindow : Window
 
         if (wantsExtension)
         {
-            bridge = new ExtensionBridge();
+            bridge = new ExtensionBridge { Multitask = multitask };
+            var fellBack = new HashSet<string>();
+            bridge.MultitaskFallback += (key, reason) => Dispatcher.BeginInvoke(() =>
+            {
+                if (!fellBack.Add(key + "|" + reason)) return; // once per profile and reason per run
+                string name = _profiles.FirstOrDefault(p => p.Key == key)?.DisplayName ?? "a profile";
+                AddLog($"[Multitask] {name}: {reason}. Used Focus mode for this step.");
+            });
             _offlineSince.Clear(); // a fresh run starts with no known outages
             bridge.OfflineChanged += (key, offline) => Dispatcher.BeginInvoke(() => OnSiteOfflineChanged(key, offline));
             bridge.ExtensionOutdated += (key, version) => Dispatcher.BeginInvoke(() =>
@@ -522,6 +533,23 @@ public partial class MainWindow : Window
 
         var activeBridge = bridge;
         var hk = hotkey;
+
+        // Multitask mode: refresh through the extension (no keys, no focus). The tab is the one set under
+        // "Tab to refresh" if it's by title, otherwise the site tab. Falls back to the normal refresh for
+        // a profile whose extension isn't ready.
+        if (multitask && refreshStep is not null && activeBridge is not null)
+        {
+            var normal = refreshStep;
+            string reloadMatch = target.Mode == TargetMode.TitleContains ? target.Text : tabMatch;
+            refreshStep = new LoopStep(normal.Name, normal.ActionLabel, async (profile, windows, ct) =>
+            {
+                if (!activeBridge.CanRunQuietly(profile.Key)) return await normal.Action(profile, windows, ct);
+                var job = new ExtensionJob(Guid.NewGuid().ToString("N"), "reload", reloadMatch, stepMs);
+                var outcome = await activeBridge.RunJobAsync(job, TriggerFor(windows.Count > 0 ? windows[0].Hwnd : IntPtr.Zero), ct,
+                    profileKey: profile.Key);
+                return outcome.ToRefreshOutcome();
+            });
+        }
 
         // Brings the profile's window to the front and presses the extension shortcut.
         Func<Task<bool>> TriggerFor(IntPtr hwnd) => () => Task.Run(() =>
@@ -576,7 +604,8 @@ public partial class MainWindow : Window
         {
             var rd = readStep!;
             stepForLoop = _ => rd;  // used by "Test 1 profile": one chat pass
-            description = (dryRun ? "DRY RUN (nothing is sent): " : "") +
+            description = (multitask ? "MULTITASK MODE (no focus, no keys): " : "FOCUS MODE: ") +
+                (dryRun ? "DRY RUN (nothing is sent): " : "") +
                 $"reply in unread chats with {replyMessages!.Length} message(s) in sequence; opens only profiles with new " +
                 $"messages ({chatDelay.TotalSeconds:0.##}s after each), then 1 refresh pass ({refreshDelay.TotalSeconds:0.##}s " +
                 $"after each), repeating; I'm hosting every {hostingEvery.TotalMinutes:0.##} min";
@@ -1159,6 +1188,7 @@ public partial class MainWindow : Window
 
         _settings.ReplyMessages = _replies.Select(r => r.Text.Trim()).Where(t => t.Length > 0).ToList();
         _settings.ReplyDryRun = DryRunCheck.IsChecked == true;
+        _settings.AutopilotMultitask = MultitaskModeRadio.IsChecked == true;
         if (TryParseDouble(HostingEveryBox.Text, out var hm)) _settings.HostingEveryMinutes = hm;
         if (TryParseDouble(SendDelayBox.Text, out var sd)) _settings.SendDelaySeconds = sd;
         if (TryParseDouble(ChatDelayBox.Text, out var cd)) _settings.ChatDelaySeconds = cd;

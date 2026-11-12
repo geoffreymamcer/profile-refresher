@@ -33,6 +33,7 @@ public sealed class AppSettings
     // "Chat & reply" task
     public List<string> ReplyMessages { get; set; } = new();
     public bool ReplyDryRun { get; set; } = true;
+    public bool AutopilotMultitask { get; set; } // false = Focus mode (brings windows forward)
     public double HostingEveryMinutes { get; set; } = 20;
     public double SendDelaySeconds { get; set; } = 2;
     public double ChatDelaySeconds { get; set; } = 0.5;
