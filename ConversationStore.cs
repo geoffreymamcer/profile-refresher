@@ -38,6 +38,7 @@ public sealed class StageTime
 {
     public long Ms { get; set; }
     public int N { get; set; }
+}
 
 public sealed class ChatData
 {
