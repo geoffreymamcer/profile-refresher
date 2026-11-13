@@ -2,6 +2,11 @@
 
 The app shows the section for the new version when an update is available. Keep each line short.
 
+## v1.2.2
+
+- Fix "chat did not open": works with the site's new message box and Send button
+- The extension updates itself (no need to reload it)
+
 ## v1.2.1
 
 - Fix: Multitask mode fell back to Focus mode (and maximized windows) when more than one profile was running

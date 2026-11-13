@@ -11,8 +11,10 @@
 //   app-chat-list-ad / [data-testid="sniffiesChatRow"] / [aria-label="View Advertisement"] / .conversation-marker.ad   the ad (never clicked)
 //   [id^="message-"] inside #chat-profile-messages-container   one message (text or photo)
 //   .sent_message / .received_message             who sent it
-//   [data-testid="chatTextArea"]                  message box (present while a chat is open)
-//   [data-testid="sendButton"]                    send (paper plane)
+//   [data-testid="inputV2TextArea"] in [data-testid="chatInputComposer"]
+//                                                 message box (present while a chat is open; Nov 2026)
+//   [data-testid="composerSend"]                  send (paper plane; data-send="disabled" while empty)
+//   [data-testid="chatTextArea"], [data-testid="sendButton"]   the same, before Nov 2026
 //   [data-testid="headerGoBackButton"]            Back
 
 /** Quick check: is there a new-message dot? (No clicks.) */
@@ -99,7 +101,10 @@ export async function readChats(job) {
   const chipOn = () => unreadChip()?.getAttribute("aria-pressed") === "true";
 
   const chatButton = () => all('[data-testid="chatButtonIcon"]')[0] || null;
-  const chatOpen = () => !!all('[data-testid="chatTextArea"]')[0];
+  // The message box: the new composer (Nov 2026) or the old one.
+  const MESSAGE_BOX =
+    '[data-testid="chatInputComposer"] textarea, [data-testid="inputV2TextArea"], [data-testid="chatTextArea"]';
+  const chatOpen = () => !!all(MESSAGE_BOX)[0];
   const listVisible = () =>
     all("chat-list-vertical-item").length > 0 || !!all('[data-testid="chatListTab-RECENTS"]')[0];
 
@@ -166,8 +171,10 @@ export async function readChats(job) {
   };
 
   // ---- replying ----
-  const textArea = () => all('[data-testid="chatTextArea"]')[0] || null;
-  const sendButton = () => all('[data-testid="sendButton"]')[0] || null;
+  const textArea = () => all(MESSAGE_BOX)[0] || null;
+  const sendButton = () => all('[data-testid="composerSend"], [data-testid="sendButton"]')[0] || null;
+  const isDisabled = (b) =>
+    b.disabled || b.getAttribute("aria-disabled") === "true" || b.getAttribute("data-send") === "disabled";
   const isOurs = (el) => el.classList.contains("sent_message") || !!el.closest(".chat-text-message-stack--sent");
 
   // Angular only notices a value it was told about, so set it the way typing does.
@@ -200,10 +207,11 @@ export async function readChats(job) {
       return { status: "dry_run", index, text };
     }
 
-    const btn = sendButton();
+    // The new Send button stays disabled until the site has noticed the text.
+    const btn = await waitFor(() => { const b = sendButton(); return b && !isDisabled(b) ? b : null; }, 3000);
     if (!btn) {
       setText(ta, "");
-      return { status: "failed", index, text, reason: "send button not found" };
+      return { status: "failed", index, text, reason: sendButton() ? "send button stayed disabled" : "send button not found" };
     }
 
     const before = new Set(msgEls().map((el) => el.id));
@@ -224,7 +232,8 @@ export async function readChats(job) {
   };
 
   // ---- photos ----
-  const photoButton = () => all('[aria-label="Select a Photo From Your Device"]')[0] || null;
+  const photoButton = () =>
+    all('[aria-label="Select a Photo From Your Device"], [data-testid="composerShare"]')[0] || null;
   const fileInputs = () => Array.from(document.querySelectorAll('input[type="file"]'))
     .filter((i) => !i.disabled && (!i.accept || /image|\*/i.test(i.accept)));
   const isPhotoEl = (el) => el.classList.contains("photo") || el.classList.contains("chat-photo-message") ||
@@ -267,7 +276,7 @@ export async function readChats(job) {
     // Some sites send right away; others show a preview that still needs Send.
     if (await waitFor(newPhoto, 2500)) return { status: "sent", text };
     await sleep(sendDelay);
-    const btn = sendButton();
+    const btn = await waitFor(() => { const b = sendButton(); return b && !isDisabled(b) ? b : null; }, 3000);
     if (btn) click(btn);
     if (await waitFor(newPhoto, Math.max(T, 15000))) return { status: "sent", text };
     return { status: "failed", text, reason: "the photo did not appear in the chat (it may still be uploading, or the site needs another step)" };
