@@ -184,6 +184,15 @@
                     <TextBlock DockPanel.Dock="Top" Style="{StaticResource Hint}" Margin="0,8,0,10"
                                Text="Tick the open profiles to include." />
                     <StackPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+                        <Button x:Name="OpenAllButton" HorizontalAlignment="Stretch" Click="OpenAll_Click"
+                                Content="Open all profiles with the extension"
+                                ToolTip="Opens every profile that has the helper extension loaded (skips ones already open), then detects them" />
+                        <CheckBox x:Name="OpenSiteCheck" Margin="0,6,0,0"
+                                  ToolTip="Opens the address from Site tab (Helper extension card). Leave off if the browser already reopens your tabs.">
+                            <TextBlock Style="{StaticResource Hint}" Text="Also open the site in each one" />
+                        </CheckBox>
+                    </StackPanel>
+                    <StackPanel DockPanel.Dock="Top" Margin="0,0,0,10">
                         <TextBlock Text="Run order" Style="{StaticResource Hint}" Margin="0,0,0,4" />
                         <ComboBox x:Name="OrderCombo" HorizontalAlignment="Stretch">
                             <ComboBoxItem Content="By taskbar position (left to right)" />

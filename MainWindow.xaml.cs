@@ -81,6 +81,7 @@ public partial class MainWindow : Window
         TelegramIncludeTextCheck.IsChecked = _settings.TelegramIncludeText;
         DryRunCheck.IsChecked = _settings.ReplyDryRun;
         (_settings.AutopilotMultitask ? MultitaskModeRadio : FocusModeRadio).IsChecked = true;
+        OpenSiteCheck.IsChecked = _settings.OpenSiteWithProfiles;
 
         AddLog("Browser Profile Refresher · " + Credits.Text);
         UpdateTaskPanels();
@@ -373,6 +374,62 @@ public partial class MainWindow : Window
     // ---------- Detection ----------
 
     private async void Detect_Click(object sender, RoutedEventArgs e) => await DetectAsync();
+
+    /// <summary>Opens every profile that has the helper extension (except ones already open), then detects.</summary>
+    private async void OpenAll_Click(object sender, RoutedEventArgs e)
+    {
+        if (_cts is not null || _detecting) return;
+        var kind = SelectedKind;
+        OpenAllButton.IsEnabled = DetectButton.IsEnabled = StartButton.IsEnabled = TestButton.IsEnabled = false;
+        StatusText.Text = $"Looking for {kind.Name} profiles with the extension…";
+        try
+        {
+            var withExt = await Task.Run(() => ProfileLauncher.FindProfilesWithExtension(kind));
+            if (withExt.Count == 0)
+            {
+                StatusText.Text = "No profiles with the extension found.";
+                AddLog($"Open all: no {kind.Name} profile has the helper extension. Load it once in each profile " +
+                       "(chrome://extensions → Developer mode → Load unpacked).");
+                return;
+            }
+
+            var open = await Task.Run(() => new BrowserScanner(kind).Scan(readCommandLines: true).Profiles
+                .Select(p => p.Key).ToHashSet(StringComparer.OrdinalIgnoreCase));
+            var toOpen = withExt.Where(p => !open.Contains(p.Key)).ToList();
+            AddLog($"Open all: {withExt.Count} profile(s) have the extension ({string.Join(", ", withExt.Select(p => p.Name))}); " +
+                   $"{withExt.Count - toOpen.Count} already open.");
+            foreach (var p in withExt.Where(p => !p.Enabled))
+                AddLog($"Open all: the extension is turned OFF in {p.Name}. Turn it on in chrome://extensions.");
+
+            string? site = OpenSiteCheck.IsChecked == true ? ProfileLauncher.SiteUrl(TabMatchBox.Text) : null;
+            if (OpenSiteCheck.IsChecked == true && site is null)
+                AddLog("Open all: the Site tab setting isn't an address (like example.com), so only the profiles are opened.");
+
+            int n = 0;
+            foreach (var p in toOpen)
+            {
+                StatusText.Text = $"Opening {p.Name} ({++n} of {toOpen.Count})…";
+                try { ProfileLauncher.Open(kind, p, site is null ? Array.Empty<string>() : new[] { site }); }
+                catch (Exception ex)
+                {
+                    AddLog($"Open all: couldn't open {p.Name}: {ex.Message}");
+                    break; // browser not found: the rest would fail the same way
+                }
+                await Task.Delay(1500); // one at a time, so the taskbar keeps this order
+            }
+
+            if (toOpen.Count > 0) await Task.Delay(2500); // let the last windows appear
+        }
+        catch (Exception ex)
+        {
+            AddLog("Open all: " + ex.Message);
+        }
+        finally
+        {
+            OpenAllButton.IsEnabled = DetectButton.IsEnabled = StartButton.IsEnabled = TestButton.IsEnabled = true;
+        }
+        await DetectAsync();
+    }
 
     private async Task DetectAsync()
     {
@@ -931,6 +988,7 @@ public partial class MainWindow : Window
         BrowserCombo.IsEnabled = !running;
         TaskCombo.IsEnabled = !running;
         DetectButton.IsEnabled = !running;
+        OpenAllButton.IsEnabled = !running;
         ProfileList.IsEnabled = !running;
         OrderCombo.IsEnabled = !running;
         OptionsBox.IsEnabled = !running;
@@ -1190,6 +1248,7 @@ public partial class MainWindow : Window
         _settings.ReplyMessages = _replies.Select(r => r.Text.Trim()).Where(t => t.Length > 0).ToList();
         _settings.ReplyDryRun = DryRunCheck.IsChecked == true;
         _settings.AutopilotMultitask = MultitaskModeRadio.IsChecked == true;
+        _settings.OpenSiteWithProfiles = OpenSiteCheck.IsChecked == true;
         if (TryParseDouble(HostingEveryBox.Text, out var hm)) _settings.HostingEveryMinutes = hm;
         if (TryParseDouble(SendDelayBox.Text, out var sd)) _settings.SendDelaySeconds = sd;
         if (TryParseDouble(ChatDelayBox.Text, out var cd)) _settings.ChatDelaySeconds = cd;

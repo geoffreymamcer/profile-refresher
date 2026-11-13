@@ -132,6 +132,15 @@ When a conversation reaches **10 received and 10 sent** text messages, its file 
 
 Opening a chat marks it as read on the site, the same as when you open it yourself.
 
+## Open all profiles at once
+
+**Open all profiles with the extension** (Profiles card) opens every profile of the selected browser that
+has the helper extension loaded, one after another so the taskbar keeps the same order (sorted by name:
+prem2 before prem10). Profiles that are already open are skipped, then the list is detected. Tick
+**Also open the site in each one** to open the address from *Site tab* too; leave it off if the browser
+already reopens your tabs, or you'll get the site twice. A profile where the extension is turned off is
+named in the log.
+
 ## Use "Autopilot mode"
 
 Replies in unread chats with your own messages, and keeps the refresh and I'm hosting passes going.
