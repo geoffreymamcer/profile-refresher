@@ -78,7 +78,17 @@ export async function readChats(job) {
   // Manual reply from the phone: { userId, items: [{ type: "text", text } | { type: "photo", data, name, mime }] }.
   const sendTo = job.sendTo && job.sendTo.userId ? job.sendTo : null;
   const maxChats = Math.max(1, job.maxChats || 25);
-  const result = { hadDot: false, chats: [], skippedAds: 0, skippedReview: [], errors: [], closedList: false, unreadLeft: 0 };
+  const result = { hadDot: false, chats: [], skippedAds: 0, skippedReview: [], errors: [], closedList: false, unreadLeft: 0,
+    timings: {} }; // ms per stage, summed over chats, with counts: { back: { ms, n }, ... }
+  const timed = async (stage, fn) => {
+    const t0 = Date.now();
+    try { return await fn(); }
+    finally {
+      const t = (result.timings[stage] ||= { ms: 0, n: 0 });
+      t.ms += Date.now() - t0;
+      t.n++;
+    }
+  };
   let step = "Start";
 
   // ---- never touch the ad: four independent checks ----
@@ -121,15 +131,16 @@ export async function readChats(job) {
     for (let i = 0; i < 15 && panel && !atTopOfHistory(); i++) {
       const before = msgEls().length;
       panel.scrollTop = 0;
-      await sleep(700);
-      if (i >= 2 && msgEls().length === before) break;
+      // Older messages appear within a moment if there are any.
+      await waitFor(() => msgEls().length > before || atTopOfHistory(), 700);
+      if (i >= 1 && msgEls().length === before) break;
     }
     let last = -1;
     for (let i = 0; i < 10; i++) {
       const c = msgEls().length;
       if (c === last) break;
       last = c;
-      await sleep(400);
+      await sleep(250);
     }
   };
 
@@ -366,26 +377,28 @@ export async function readChats(job) {
       await sleep(600);
     }
 
-    await sleep(800);
+    await sleep(300);
     result.chats.push(readOpenChat(row.id)); // saved to the chat log
 
     step = "Back to chat list";
-    if (!(await backToList())) result.errors.push({ userId: want, step, message: "could not get back to the chat list" });
+    if (!(await timed("back", backToList))) result.errors.push({ userId: want, step, message: "could not get back to the chat list" });
   };
 
   /** Back, Back → chat list (as on the site). */
+  // Moves on as soon as each screen changes, instead of fixed pauses.
   const backToList = async () => {
-    const b1 = await waitFor(() => all('[data-testid="headerGoBackButton"]')[0], 4000);
+    const back = () => all('[data-testid="headerGoBackButton"]')[0];
+    const b1 = await waitFor(back, 4000);
     if (!b1) return false;
+    const path1 = location.pathname;
     click(b1);
-    await waitFor(() => !chatOpen(), 4000);
-    await sleep(600);
+    // First Back leaves the chat (the address changes or the message box goes away).
+    await waitFor(() => location.pathname !== path1 || !chatOpen() || listVisible(), 2000);
+    if (listVisible() && !chatOpen()) return true;
 
-    const b2 = all('[data-testid="headerGoBackButton"]')[0];
-    if (b2) {
-      click(b2);
-      await sleep(600);
-    }
+    // Second Back: from the profile to the list.
+    const b2 = await waitFor(back, 1500);
+    if (b2) click(b2);
     return !!(await waitFor(() => listVisible() && !chatOpen(), 5000));
   };
 
@@ -405,8 +418,8 @@ export async function readChats(job) {
     }
     // Wait for the rows to actually render (a fixed pause was sometimes too short on a slow load,
     // so the pass saw an empty list and moved on to the next profile).
-    await waitFor(() => all("chat-list-vertical-item").length > 0, 5000);
-    await sleep(800);
+    await timed("list", () => waitFor(() => all("chat-list-vertical-item").length > 0, 5000));
+    await sleep(300);
 
     let turnedOnUnread = false;
     let turnedOffUnread = false;
@@ -416,7 +429,7 @@ export async function readChats(job) {
       if (unreadChip() && chipOn()) {
         click(unreadChip());
         turnedOffUnread = !!(await waitFor(() => !chipOn(), 3000));
-        await sleep(800);
+        await sleep(300);
       }
       await sendToChat();
     }
@@ -426,7 +439,7 @@ export async function readChats(job) {
     if (!sendTo && unreadChip() && !chipOn()) {
       click(unreadChip());
       turnedOnUnread = !!(await waitFor(chipOn, 3000));
-      await sleep(800);
+      await sleep(300);
       // The filtered list loads again: give it time to show the unread rows.
       await waitFor(() => all("chat-list-vertical-item").some((r) => !isAd(r) && isUnread(r)), 4000);
     }
@@ -459,22 +472,22 @@ export async function readChats(job) {
 
       step = "Open chat";
       click(target);
-      if (!(await waitFor(chatOpen))) {
+      if (!(await timed("open", () => waitFor(chatOpen)))) {
         result.errors.push({ userId: key, step, message: "chat did not open" });
         if (!listVisible()) await backToList();
         continue;
       }
 
       step = "Read chat";
-      await loadFullHistory();
+      await timed("read", loadFullHistory);
       let chat = readOpenChat(row.id);
 
       if (replies.length > 0) {
         step = "Reply";
-        const reply = await sendReply(chat);
+        const reply = await timed("reply", () => sendReply(chat));
         if (reply.status === "failed") result.errors.push({ userId: key, step, message: reply.reason });
         if (reply.status === "sent") {
-          await sleep(800);
+          await sleep(200); // sending already waited for our message to show up
           chat = readOpenChat(row.id); // include what we just sent in the saved log
         }
         chat.reply = reply;
@@ -482,11 +495,10 @@ export async function readChats(job) {
       result.chats.push(chat);
 
       step = "Back to chat list";
-      if (!(await backToList())) {
+      if (!(await timed("back", backToList))) {
         result.errors.push({ userId: key, step, message: "could not get back to the chat list" });
         break;
       }
-      await sleep(500);
     }
 
     // Unread chats we could not get to (an error, the per-pass limit, or still loading).
@@ -501,23 +513,22 @@ export async function readChats(job) {
       step = "Restore Unread filter";
       click(unreadChip());
       await waitFor(() => !chipOn(), 3000);
-      await sleep(300);
     }
     if (turnedOffUnread && unreadChip() && !chipOn()) {
       step = "Restore Unread filter";
       click(unreadChip());
       await waitFor(chipOn, 3000);
-      await sleep(300);
     }
 
     step = "Close chat list";
     const b = chatButton();
     if (b && b.classList.contains("active")) {
       click(b);
-      result.closedList = !!(await waitFor(() => {
+      // Closed when the button is no longer active or the list is gone, whichever shows first.
+      result.closedList = !!(await timed("close", () => waitFor(() => {
         const x = chatButton();
-        return x && !x.classList.contains("active");
-      }, 4000));
+        return (x && !x.classList.contains("active")) || !listVisible();
+      }, 3000)));
     } else {
       result.closedList = true;
     }

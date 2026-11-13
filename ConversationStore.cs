@@ -18,7 +18,26 @@ public sealed class ReadChatsData
 
     /// <summary>Unread chats still in the list when the pass ended (needs-review chats not counted).</summary>
     public int UnreadLeft { get; set; }
+
+    /// <summary>Time spent per stage (open, read, reply, back, list, close), summed over chats.</summary>
+    public Dictionary<string, StageTime>? Timings { get; set; }
+
+    /// <summary>"open 0.6s · read 1.2s · back 0.9s": average per chat for each stage.</summary>
+    public string TimingSummary()
+    {
+        if (Timings is null || Timings.Count == 0) return "";
+        string[] order = { "list", "open", "read", "reply", "back", "close" };
+        return string.Join(" · ", Timings
+            .OrderBy(kv => { int i = Array.IndexOf(order, kv.Key); return i < 0 ? 99 : i; })
+            .Where(kv => kv.Value.N > 0)
+            .Select(kv => $"{kv.Key} {kv.Value.Ms / 1000.0 / kv.Value.N:0.0}s"));
+    }
 }
+
+public sealed class StageTime
+{
+    public long Ms { get; set; }
+    public int N { get; set; }
 
 public sealed class ChatData
 {

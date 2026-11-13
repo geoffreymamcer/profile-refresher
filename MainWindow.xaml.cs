@@ -1088,6 +1088,7 @@ public partial class MainWindow : Window
         if (data.SkippedAds > 0) summary += ", ad skipped";
         if (!data.ClosedList) summary += ", WARNING: chat list may still be open";
         if (data.UnreadLeft > 0) summary += $", {data.UnreadLeft} unread chat(s) left: will check this profile again";
+        if (data.Timings is { Count: > 0 } && data.Chats.Count > 0) summary += $" [time per chat: {data.TimingSummary()}]";
         if (!outcome.Ok && data.Errors.Count == 0) summary += $" ({outcome.Message})";
 
         if (replies is not null && data.Chats.Count > 0 && data.Chats.All(c => c.Reply is null))

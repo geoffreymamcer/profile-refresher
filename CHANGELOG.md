@@ -2,6 +2,11 @@
 
 The app shows the section for the new version when an update is available. Keep each line short.
 
+## v1.2.3
+
+- Faster replies: going back to the chat list and closing the message panel no longer wait out fixed pauses
+- The log shows how long each part of a chat took, to find what's still slow
+
 ## v1.2.2
 
 - Fix "chat did not open": works with the site's new message box and Send button
