@@ -40,7 +40,7 @@ public enum DotState
 
 /// <summary>A live report from dotwatch.js, relayed by the extension.</summary>
 public sealed record DotReport(string? Client, int TabId, bool HasButton, bool HasDot, bool Offline = false,
-    string? Version = null, bool ReloadTried = false);
+    string? Version = null, bool ReloadTried = false, string? AutoRefreshed = null);
 
 /// <summary>Outcome of a job, including any data the extension sent back.</summary>
 public sealed record JobOutcome(bool Ok, string Message, JsonElement? Data)
@@ -78,6 +78,13 @@ public sealed class ExtensionBridge : IDisposable
     /// or whose extension doesn't answer.
     /// </summary>
     public bool Multitask { get; set; }
+
+    /// <summary>Auto-refresh settings sent to the extensions (they keep them, also when the app is closed).</summary>
+    public bool AutoRefreshEnabled { get; set; } = true;
+    public int AutoRefreshMinutes { get; set; } = 10;
+
+    /// <summary>An extension refreshed its site tab by itself. Arguments: profile key (null if not linked), reason.</summary>
+    public event Action<string?, string>? AutoRefreshed;
 
     /// <summary>A step used Focus mode in Multitask mode. Arguments: profile key, reason. Raised on a background thread.</summary>
     public event Action<string, string>? MultitaskFallback;
@@ -321,6 +328,7 @@ public sealed class ExtensionBridge : IDisposable
                     _reports[(c, report.TabId)] = (report, DateTimeOffset.Now);
                 }
                 if (changed) OfflineChanged?.Invoke(profileKey, report.Offline);
+                if (report.AutoRefreshed is { Length: > 0 and <= 200 } why) AutoRefreshed?.Invoke(profileKey, why);
 
                 if (InstalledExtensionVersion is not null && report.Version is { } v && report.ReloadTried &&
                     v != InstalledExtensionVersion)
@@ -333,7 +341,12 @@ public sealed class ExtensionBridge : IDisposable
 
             // Tell the extension which version is installed, so an older copy can reload itself.
             await WriteJsonAsync(res, JsonSerializer.Serialize(
-                new { extensionVersion = InstalledExtensionVersion, multitask = Multitask }, Json));
+                new
+                {
+                    extensionVersion = InstalledExtensionVersion,
+                    multitask = Multitask,
+                    autoRefresh = new { enabled = AutoRefreshEnabled, minutes = AutoRefreshMinutes },
+                }, Json));
             return;
         }
 

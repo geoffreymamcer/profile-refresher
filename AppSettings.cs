@@ -34,7 +34,9 @@ public sealed class AppSettings
     public List<string> ReplyMessages { get; set; } = new();
     public bool ReplyDryRun { get; set; } = true;
     public bool AutopilotMultitask { get; set; }
-    public bool OpenSiteWithProfiles { get; set; } // false = Focus mode (brings windows forward)
+    public bool OpenSiteWithProfiles { get; set; }
+    public bool AutoRefreshEnabled { get; set; } = true;
+    public string AutoRefreshMinutes { get; set; } = "10"; // false = Focus mode (brings windows forward)
     public double HostingEveryMinutes { get; set; } = 20;
     public double SendDelaySeconds { get; set; } = 2;
     public double ChatDelaySeconds { get; set; } = 0.5;

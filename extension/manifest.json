@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Profile Refresher Helper",
-  "version": "1.5.2",
+  "version": "1.6.0",
   "description": "Developed by Jeymeyzer. XYZ Chatter (Team Mel). Runs the status steps when Profile Refresher asks; talks only to the app on localhost.",
   "author": "Jeymeyzer · XYZ Chatter (Team Mel)",
   "permissions": [
@@ -25,6 +25,15 @@
     }
   },
   "content_scripts": [
+    {
+      "matches": [
+        "https://sniffies.com/*",
+        "https://*.sniffies.com/*"
+      ],
+      "js": ["livewatch.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
     {
       "matches": [
         "https://sniffies.com/*",

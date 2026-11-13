@@ -132,6 +132,21 @@ When a conversation reaches **10 received and 10 sent** text messages, its file 
 
 Opening a chat marks it as read on the site, the same as when you open it yourself.
 
+## Frozen page fix (auto-refresh)
+
+The site's page sometimes stops updating: new chats don't show up in the list and the orange dot doesn't
+appear until you refresh. The helper extension fixes this by refreshing the site tab itself (no focus,
+no keys), also while the app is closed:
+
+- right away when the page's live connection to the site closed and didn't come back within 30 s,
+  or when the "lost your internet connection" banner has been up for a minute;
+- every 10 minutes (setting under **Helper extension → Frozen page fix**), but only when that tab
+  wasn't used for 2 minutes and nothing is typed in the message box.
+
+It never refreshes a tab where an app step is running, a page loaded less than a minute ago, or the same
+tab twice within 2 minutes. While the app runs a task, the log shows each one: `Auto-refresh: <profile>'s
+site tab was refreshed by the extension (<reason>)`. The extension keeps the last setting the app sent it.
+
 ## Open all profiles at once
 
 **Open all profiles with the extension** (Profiles card) opens every profile of the selected browser that

@@ -27,7 +27,10 @@ function clientId() {
 // "sleep": timers for page scripts in Multitask mode. Chrome slows timers in hidden or covered
 // windows (to as little as once a minute); the extension's own timers aren't slowed.
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  if (msg?.type === "dot" && sender.tab) reportDot(sender.tab, msg);
+  if (msg?.type === "dot" && sender.tab) {
+    if (msg.health) autoRefreshCheck(sender.tab, msg);
+    reportDot(sender.tab, msg);
+  }
   if (msg?.type === "sleep") {
     setTimeout(() => sendResponse(true), Math.max(0, Math.min(60000, Number(msg.ms) || 0)));
     return true; // answer later
@@ -85,6 +88,56 @@ async function maybeSelfUpdate(installed) {
   }
 })();
 
+// ---------- Auto-refresh ----------
+// The site's page sometimes stops updating (no new chats, no orange dot) until it's refreshed. We refresh
+// the site tab ourselves, without focus or keys, also when the app isn't running:
+//  - when its live connection closed and didn't come back within 30 s, or the "lost your internet
+//    connection" banner has been up for a minute;
+//  - every N minutes (the app's setting; default 10), but only when you haven't used the tab for
+//    2 minutes, nothing is typed in the message box, and no app step is running in it.
+const AUTO_DEFAULT = { enabled: true, minutes: 10 };
+let autoSettings = AUTO_DEFAULT;
+const autoReady = chrome.storage.local.get("autoRefresh").then((s) => { if (s.autoRefresh) autoSettings = s.autoRefresh; });
+const offlineSince = new Map(); // tabId → when the banner was first seen
+const lastAutoReload = new Map(); // tabId → when we last reloaded it
+const autoNote = new Map(); // tabId → reason, sent to the app with the next report
+let jobTabId = null;
+
+async function autoRefreshCheck(tab, msg) {
+  await autoReady;
+  if (!autoSettings.enabled || tab.id === jobTabId) return;
+  const h = msg.health || {};
+  const now = Date.now();
+
+  if (msg.offline) { if (!offlineSince.has(tab.id)) offlineSince.set(tab.id, now); }
+  else offlineSince.delete(tab.id);
+
+  if (h.pageAge < 60000) return; // just loaded: give it a minute
+  if (now - (lastAutoReload.get(tab.id) || 0) < 120000) return; // at most every 2 minutes
+
+  let reason = null;
+  const live = h.live;
+  if (live?.ever && live.open === 0 && live.closedAt && now - live.closedAt > 30000) reason = "the live connection was lost";
+  else if (offlineSince.has(tab.id) && now - offlineSince.get(tab.id) > 60000) reason = "the site said the connection was lost";
+  else if (h.pageAge > autoSettings.minutes * 60000 && h.idleFor > 120000 && !h.typing)
+    reason = `timed refresh (every ${autoSettings.minutes} min)`;
+  if (!reason) return;
+
+  lastAutoReload.set(tab.id, now);
+  offlineSince.delete(tab.id);
+  autoNote.set(tab.id, reason);
+  try { await chrome.tabs.reload(tab.id); } catch { /* tab closed */ }
+}
+
+async function applyAppSettings(info) {
+  const a = info?.autoRefresh;
+  if (!a || typeof a.enabled !== "boolean") return;
+  const next = { enabled: a.enabled, minutes: Math.min(240, Math.max(2, Number(a.minutes) || 10)) };
+  if (next.enabled === autoSettings.enabled && next.minutes === autoSettings.minutes) return;
+  autoSettings = next;
+  await chrome.storage.local.set({ autoRefresh: next });
+}
+
 async function reportDot(tab, msg) {
   try {
     await reloadTriedReady;
@@ -99,10 +152,13 @@ async function reportDot(tab, msg) {
         offline: !!msg.offline,
         version: MY_VERSION,
         reloadTried: reloadTriedFor !== null && reloadTriedFor !== MY_VERSION,
+        autoRefreshed: autoNote.get(tab.id) || null,
       }),
     });
+    autoNote.delete(tab.id);
     if (r.status === 200) {
       const info = await r.json();
+      applyAppSettings(info);
       if (info?.multitask) pollForJobs();
       maybeSelfUpdate(info?.extensionVersion);
     }
@@ -131,6 +187,7 @@ async function runJob(job) {
   let result;
   try {
     const tab = await findTab(job.tabMatch);
+    jobTabId = tab?.id ?? null; // no auto-refresh in this tab while the step runs
     if (!tab) {
       result = {
         ok: false,
@@ -149,6 +206,7 @@ async function runJob(job) {
   } catch (e) {
     result = { ok: false, step: "Run", message: String(e?.message ?? e) };
   }
+  jobTabId = null;
 
   try {
     await fetch(`${APP}/result`, {

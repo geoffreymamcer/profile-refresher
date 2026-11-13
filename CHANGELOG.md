@@ -2,6 +2,12 @@
 
 The app shows the section for the new version when an update is available. Keep each line short.
 
+## v1.4.0
+
+- Fix for the page freezing (no new chats, no orange dot until you refresh): the extension refreshes the site tab by itself
+- Right away when the site's live connection drops, and every 10 min when you're not using that tab (setting in Helper extension)
+- Works even when the app is closed; never while you're typing or an Autopilot step runs in that tab
+
 ## v1.3.0
 
 - New: "Open all profiles with the extension" button in the Profiles card opens them in one click

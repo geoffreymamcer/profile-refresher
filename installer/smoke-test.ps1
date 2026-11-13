@@ -76,7 +76,7 @@ $auto = $items | Where-Object { $_.Current.Name -eq 'Autopilot mode' }
 $auto.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
 $ec.Collapse(); Start-Sleep 2
 Shot '3-autopilot'
-foreach ($id in 'FocusModeRadio', 'MultitaskModeRadio', 'ReplyList', 'HostingEveryBox', 'TelegramCheck', 'TabMatchBox', 'StartButton', 'LogList') {
+foreach ($id in 'AutoRefreshCheck', 'AutoRefreshMinutesBox', 'FocusModeRadio', 'MultitaskModeRadio', 'ReplyList', 'HostingEveryBox', 'TelegramCheck', 'TabMatchBox', 'StartButton', 'LogList') {
     $e = Find $id
     if (!$e -or $e.Current.IsOffscreen -and $id -in 'StartButton', 'LogList') { throw "Autopilot: '$id' not available" }
 }

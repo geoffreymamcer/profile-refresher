@@ -82,6 +82,8 @@ public partial class MainWindow : Window
         DryRunCheck.IsChecked = _settings.ReplyDryRun;
         (_settings.AutopilotMultitask ? MultitaskModeRadio : FocusModeRadio).IsChecked = true;
         OpenSiteCheck.IsChecked = _settings.OpenSiteWithProfiles;
+        AutoRefreshCheck.IsChecked = _settings.AutoRefreshEnabled;
+        AutoRefreshMinutesBox.Text = _settings.AutoRefreshMinutes;
 
         AddLog("Browser Profile Refresher · " + Credits.Text);
         UpdateTaskPanels();
@@ -557,7 +559,17 @@ public partial class MainWindow : Window
 
         if (wantsExtension)
         {
-            bridge = new ExtensionBridge { Multitask = multitask };
+            bridge = new ExtensionBridge
+            {
+                Multitask = multitask,
+                AutoRefreshEnabled = AutoRefreshCheck.IsChecked == true,
+                AutoRefreshMinutes = int.TryParse(AutoRefreshMinutesBox.Text.Trim(), out int arm) ? Math.Clamp(arm, 2, 240) : 10,
+            };
+            bridge.AutoRefreshed += (key, why) => Dispatcher.BeginInvoke(() =>
+            {
+                string name = _profiles.FirstOrDefault(p => p.Key == key)?.DisplayName ?? "a profile";
+                AddLog($"Auto-refresh: {name}'s site tab was refreshed by the extension ({why}).");
+            });
             var fellBack = new HashSet<string>();
             bridge.MultitaskFallback += (key, reason) => Dispatcher.BeginInvoke(() =>
             {
@@ -1249,6 +1261,8 @@ public partial class MainWindow : Window
         _settings.ReplyDryRun = DryRunCheck.IsChecked == true;
         _settings.AutopilotMultitask = MultitaskModeRadio.IsChecked == true;
         _settings.OpenSiteWithProfiles = OpenSiteCheck.IsChecked == true;
+        _settings.AutoRefreshEnabled = AutoRefreshCheck.IsChecked == true;
+        _settings.AutoRefreshMinutes = AutoRefreshMinutesBox.Text.Trim();
         if (TryParseDouble(HostingEveryBox.Text, out var hm)) _settings.HostingEveryMinutes = hm;
         if (TryParseDouble(SendDelayBox.Text, out var sd)) _settings.SendDelaySeconds = sd;
         if (TryParseDouble(ChatDelayBox.Text, out var cd)) _settings.ChatDelaySeconds = cd;

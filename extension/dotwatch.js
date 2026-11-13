@@ -22,6 +22,21 @@
     Array.from(document.getElementsByTagName("p")) // the banner is a <p>; checking only these keeps it cheap
       .some((el) => el.childElementCount === 0 && OFFLINE_TEXT.test(el.textContent || "") && visible(el));
 
+  // When you last used this tab yourself (real key presses, clicks, scrolling; not the extension's clicks).
+  let lastInputAt = Date.now();
+  for (const ev of ["keydown", "pointerdown", "wheel", "input"])
+    window.addEventListener(ev, (e) => { if (e.isTrusted) lastInputAt = Date.now(); }, { capture: true, passive: true });
+
+  const MESSAGE_BOX =
+    '[data-testid="chatInputComposer"] textarea, [data-testid="inputV2TextArea"], [data-testid="chatTextArea"]';
+  const typing = () => Array.from(document.querySelectorAll(MESSAGE_BOX)).some((t) => (t.value || "").trim().length > 0);
+
+  // The live connection, from livewatch.js (runs in the page).
+  const live = () => {
+    try { return JSON.parse(document.documentElement.getAttribute("data-pr-live") || "null"); }
+    catch { return null; }
+  };
+
   const read = () => {
     const btn = document.querySelector('[data-testid="chatButtonIcon"]');
     return {
@@ -30,6 +45,14 @@
       offline: offlineShown(),
     };
   };
+
+  // Sent with heartbeats only (it changes all the time), for the extension's auto-refresh.
+  const health = () => ({
+    pageAge: Math.round(performance.now()),
+    idleFor: Date.now() - lastInputAt,
+    typing: typing(),
+    live: live(),
+  });
 
   const stop = () => {
     dead = true;
@@ -48,7 +71,7 @@
     last = key;
 
     try {
-      chrome.runtime.sendMessage({ type: "dot", ...state }).catch(() => {});
+      chrome.runtime.sendMessage({ type: "dot", ...state, ...(force ? { health: health() } : {}) }).catch(() => {});
     } catch {
       stop();
     }

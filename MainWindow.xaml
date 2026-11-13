@@ -486,6 +486,7 @@
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
                                     </Grid.RowDefinitions>
                                     <TextBlock Text="Site tab (address contains)" Style="{StaticResource Label}" />
                                     <TextBox x:Name="TabMatchBox" Grid.Column="1" Margin="0,4"
@@ -497,6 +498,23 @@
                                         <TextBlock Style="{StaticResource Hint}" Margin="10,0,0,0"
                                                    Text="must match chrome://extensions/shortcuts" />
                                     </DockPanel>
+
+                                    <TextBlock Grid.Row="3" Text="Frozen page fix" Style="{StaticResource Label}"
+                                               VerticalAlignment="Top" Margin="0,6,12,0" />
+                                    <StackPanel Grid.Row="3" Grid.Column="1" Margin="0,6,0,4">
+                                        <CheckBox x:Name="AutoRefreshCheck">
+                                            <TextBlock TextWrapping="Wrap"
+                                                       Text="Refresh the site tab by itself when it stops updating" />
+                                        </CheckBox>
+                                        <DockPanel Margin="0,6,0,0" IsEnabled="{Binding IsChecked, ElementName=AutoRefreshCheck}">
+                                            <TextBlock Text="and every" Style="{StaticResource Hint}" Margin="0,0,8,0" />
+                                            <TextBox x:Name="AutoRefreshMinutesBox" Width="56" DockPanel.Dock="Left" />
+                                            <TextBlock Style="{StaticResource Hint}" Margin="8,0,0,0"
+                                                       Text="min when you're not using that tab" />
+                                        </DockPanel>
+                                        <TextBlock Style="{StaticResource Hint}" Margin="0,6,0,0"
+                                                   Text="Done by the extension, also while this app is closed (it keeps the last setting it got). It refreshes right away when the site's live connection drops, and on the timer only if the tab wasn't used for 2 min and nothing is typed." />
+                                    </StackPanel>
 
                                     <TextBlock Grid.Row="2" Text="Wait per step" Style="{StaticResource Label}" />
                                     <DockPanel Grid.Row="2" Grid.Column="1" Margin="0,4">
