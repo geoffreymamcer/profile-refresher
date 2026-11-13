@@ -2,6 +2,11 @@
 
 The app shows the section for the new version when an update is available. Keep each line short.
 
+## v1.3.0
+
+- New: "Open all profiles with the extension" button in the Profiles card opens them in one click
+- Can also open the site in each one (tick "Also open the site in each one")
+
 ## v1.2.3
 
 - Faster replies: going back to the chat list and closing the message panel no longer wait out fixed pauses

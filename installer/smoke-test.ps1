@@ -82,6 +82,43 @@ foreach ($id in 'FocusModeRadio', 'MultitaskModeRadio', 'ReplyList', 'HostingEve
 }
 Write-Host 'Autopilot settings are shown.'
 
+# --- Open all profiles with the extension ---
+# A fake Chrome data folder: "Profile 7" has our extension (loaded from the installed folder), "Profile 8" doesn't.
+$chromeExe = @("$env:ProgramFiles\Google\Chrome\Application\chrome.exe", "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe") |
+    Where-Object { Test-Path $_ } | Select-Object -First 1
+if ($chromeExe) {
+    Get-Process chrome -ErrorAction SilentlyContinue | Stop-Process -Force
+    $ud = Join-Path $env:LOCALAPPDATA 'Google\Chrome\User Data'
+    New-Item -ItemType Directory -Force (Join-Path $ud 'Profile 7'), (Join-Path $ud 'Profile 8') | Out-Null
+    @{ profile = @{ info_cache = @{ 'Profile 7' = @{ name = 'test-with-ext' }; 'Profile 8' = @{ name = 'test-without' } } } } |
+        ConvertTo-Json -Depth 5 | Set-Content (Join-Path $ud 'Local State') -Encoding UTF8
+    $extDir = Join-Path $dir 'extension'
+    @{ extensions = @{ settings = @{ abcdefghijklmnopabcdefghijklmnop = @{ path = $extDir; location = 4; state = 1 } } } } |
+        ConvertTo-Json -Depth 6 | Set-Content (Join-Path $ud 'Profile 7\Secure Preferences') -Encoding UTF8
+    '{}' | Set-Content (Join-Path $ud 'Profile 8\Secure Preferences') -Encoding UTF8
+
+    (Find 'OpenAllButton').GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+    $launched = $null
+    $deadline = (Get-Date).AddSeconds(30)
+    do {
+        Start-Sleep 2
+        $cmds = @(Get-CimInstance Win32_Process -Filter "Name='chrome.exe'" | ForEach-Object CommandLine)
+        $launched = $cmds | Where-Object { $_ -like '*--profile-directory=*Profile 7*' } | Select-Object -First 1
+    } until ($launched -or (Get-Date) -gt $deadline)
+    Shot '4a-open-all'
+    if (!$launched) { throw 'Open all did not open the profile with the extension' }
+    if ($cmds | Where-Object { $_ -like '*Profile 8*' }) { throw 'Open all opened a profile without the extension' }
+    Write-Host "Open all launched: $launched"
+    Start-Sleep 6
+    Get-Process chrome -ErrorAction SilentlyContinue | Stop-Process -Force
+    Start-Sleep 2
+    # Bring the app back to the front for the update test.
+    Add-Type -Name W -Namespace U -MemberDefinition '[DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);'
+    [U.W]::SetForegroundWindow($app.MainWindowHandle) | Out-Null
+} else {
+    Write-Host 'Chrome is not installed on this machine: Open all test skipped.'
+}
+
 # --- Update: the banner appears, Update now installs it and the app comes back by itself ---
 $banner = $null
 $deadline = (Get-Date).AddSeconds(30)
